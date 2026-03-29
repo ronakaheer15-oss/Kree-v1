@@ -1,18 +1,26 @@
 import asyncio
+import collections
 import threading
 import json
+import difflib
 import re
 import sys
 import traceback
 import functools
+import base64
+import unicodedata
+import subprocess
+import platform
 from pathlib import Path
 from typing import Any, Optional
 
 try:
     import pyaudio  # type: ignore[import]
+    import cv2      # type: ignore[import]
 except ImportError:
     pyaudio = None  # type: ignore[assignment]
-    print("[JARVIS] ⚠️ PyAudio not installed — audio will be disabled.")
+    cv2 = None      # type: ignore[assignment]
+    print("[JARVIS] ⚠️ PyAudio or CV2 not installed.")
 
 from google import genai  # type: ignore[import]
 from google.genai import types  # type: ignore[import]
@@ -20,11 +28,15 @@ import time
 import wave
 from ui import JarvisUI  # type: ignore[import]
 from memory.memory_manager import load_memory, update_memory, format_memory_for_prompt  # type: ignore[import]
+from memory.config_manager import load_audio_settings, load_telemetry_settings  # type: ignore[import]
+from core.telemetry import TelemetryEvents, TelemetryLogger, export_session_trace, load_session_events  # type: ignore[import]
 
 from agent.task_queue import get_queue  # type: ignore[import]
 
 from actions.flight_finder import flight_finder  # type: ignore[import]
 from actions.open_app         import open_app  # type: ignore[import]
+from actions.downloader_updater import downloader_updater  # type: ignore[import]
+from actions.openapps_automation import openapps_automation  # type: ignore[import]
 from actions.weather_report   import weather_action  # type: ignore[import]
 from actions.send_message     import send_message  # type: ignore[import]
 from actions.reminder         import reminder  # type: ignore[import]
@@ -40,24 +52,31 @@ from actions.dev_agent        import dev_agent  # type: ignore[import]
 from actions.web_search       import web_search as web_search_action  # type: ignore[import]
 from actions.computer_control import computer_control  # type: ignore[import]
 
+
 def get_base_dir():
     if getattr(sys, "frozen", False):
         return Path(sys.executable).parent
     return Path(__file__).resolve().parent
 
-BASE_DIR        = get_base_dir()
+
+BASE_DIR = get_base_dir()
 API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
-PROMPT_PATH     = BASE_DIR / "core" / "prompt.txt"
-LIVE_MODEL          = "models/gemini-2.5-flash-native-audio-preview-12-2025"
-FORMAT              = pyaudio.paInt16 if pyaudio else 8  # paInt16 = 8
-CHANNELS            = 1
-SEND_SAMPLE_RATE    = 16000
+PROMPT_PATH = BASE_DIR / "core" / "prompt.txt"
+LIVE_MODEL = "models/gemini-2.5-flash-native-audio-preview-12-2025"
+FORMAT = pyaudio.paInt16 if pyaudio else 8  # paInt16 = 8
+CHANNELS = 1
+SEND_SAMPLE_RATE = 16000
 RECEIVE_SAMPLE_RATE = 24000
-CHUNK_SIZE          = 1024
+CHUNK_SIZE = 1024
+MAX_AUDIO_IN_QUEUE = 96
+MAX_AUDIO_OUT_QUEUE = 48
+MAX_PLAY_QUEUE = 120
+
 
 # ── Lazy PyAudio init (prevents crash if no audio device at startup) ──────────
 _pya = None
 _pya_lock = threading.Lock()
+
 
 def _get_pya() -> Any:
     global _pya
@@ -70,9 +89,12 @@ def _get_pya() -> Any:
                     print(f"[JARVIS] ❌ PyAudio init failed: {e}")
     return _pya
 
+
 def _get_api_key() -> str:
-    import core.vault as vault # type: ignore[import]
+    import core.vault as vault  # type: ignore[import]
+
     return vault.load_api_key(API_CONFIG_PATH)
+
 
 def _load_system_prompt() -> str:
     try:
@@ -84,18 +106,40 @@ def _load_system_prompt() -> str:
             "Never simulate or guess results — always call the appropriate tool."
         )
 
-_memory_turn_counter  = 0
-_memory_turn_lock     = threading.Lock()
+
+def _local_welcome_voice() -> None:
+    """Fast local welcome voice to avoid model latency on startup."""
+    if platform.system() != "Windows":
+        return
+    try:
+        script = (
+            "Add-Type -AssemblyName System.Speech;"
+            "$s=New-Object System.Speech.Synthesis.SpeechSynthesizer;"
+            "$s.Rate=1;$s.Volume=90;"
+            "$s.SpeakAsync('System online. Welcome back.');"
+        )
+        subprocess.Popen(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except Exception:
+        pass
+
+
+_memory_turn_counter = 0
+_memory_turn_lock = threading.Lock()
 _MEMORY_EVERY_N_TURNS = 5
-_last_memory_input    = ""
+_last_memory_input = ""
 
 
 def _update_memory_async(user_text: str, jarvis_text: str) -> None:
     """
     Multilingual memory updater.
     Model  : gemini-2.5-flash-lite (lowest cost)
-    Stage 1: Quick YES/NO check  → ~5 tokens output
-    Stage 2: Full extraction     → only if Stage 1 says YES
+    Stage 1: Quick YES/NO check  -> ~5 tokens output
+    Stage 2: Full extraction     -> only if Stage 1 says YES
     Result : ~80% fewer API calls vs original
     """
     global _memory_turn_counter, _last_memory_input
@@ -116,6 +160,7 @@ def _update_memory_async(user_text: str, jarvis_text: str) -> None:
 
     try:
         import google.generativeai as genai_sync  # type: ignore[import]
+
         genai_sync.configure(api_key=_get_api_key())
         model = genai_sync.GenerativeModel("gemini-2.5-flash-lite")
 
@@ -172,6 +217,131 @@ TOOL_DECLARATIONS = [
                 }
             },
             "required": ["app_name"]
+        }
+    },
+    {
+        "name": "openapps_automation",
+        "description": (
+            "Controls OpenApps as an optional automation and multi-tasking engine. "
+            "Use this for simulated app workflows, benchmark tasks, or parallel agent tasks. "
+            "Do NOT replace native app opening with this tool. "
+            "User phrase alias: 'Start Kree automation environment'."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": "launch_env | start_kree_automation_environment | run_task | run_parallel_tasks | run_preset | open_and_delegate | list_apps | list_agents | list_tasks | license_info | stop | status"
+                },
+                "app": {
+                    "type": "STRING",
+                    "description": "Optional OpenApps app name for launch_env (todo|calendar|maps|messenger|code_editor)"
+                },
+                "theme": {
+                    "type": "STRING",
+                    "description": "Optional UI theme for launch_env: dark | light"
+                },
+                "agent": {
+                    "type": "STRING",
+                    "description": "Agent config for run_task/run_parallel_tasks, e.g. GPT-5-1"
+                },
+                "task_name": {
+                    "type": "STRING",
+                    "description": "OpenApps benchmark task name for run_task"
+                },
+                "headless": {
+                    "type": "BOOLEAN",
+                    "description": "Set false to watch the run in a visible browser"
+                },
+                "timeout": {
+                    "type": "INTEGER",
+                    "description": "Timeout in seconds for run_task"
+                },
+                "extra": {
+                    "type": "STRING",
+                    "description": "Optional extra CLI overrides for run_parallel_tasks"
+                },
+                "preset": {
+                    "type": "STRING",
+                    "description": "Preset name for run_preset (e.g. codex_github_app_builder)"
+                },
+                "prompt": {
+                    "type": "STRING",
+                    "description": "Prompt for preset automation, e.g. app requirements for Codex"
+                },
+                "targets": {
+                    "type": "STRING",
+                    "description": "Apps/sites to open for open_and_delegate. Example: 'codex and github and vscode'"
+                },
+                "delegate_app": {
+                    "type": "STRING",
+                    "description": "Where to send instruction for open_and_delegate. Example: codex"
+                },
+                "fallback": {
+                    "type": "STRING",
+                    "description": "For missing native app: ask | download | browser"
+                }
+            },
+            "required": ["action"]
+        }
+    },
+    {
+        "name": "downloader_updater",
+        "description": (
+            "Downloads files and installs/updates software. "
+            "Use this when user asks to download, install, update, upgrade, or check available updates."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": "download_file | download | install_app | update_app | update_all | check_updates | auto"
+                },
+                "url": {
+                    "type": "STRING",
+                    "description": "URL for download_file"
+                },
+                "destination": {
+                    "type": "STRING",
+                    "description": "Optional destination path for downloads"
+                },
+                "target": {
+                    "type": "STRING",
+                    "description": "App name or winget ID for install_app/update_app/download"
+                },
+                "query": {
+                    "type": "STRING",
+                    "description": "Natural language request for auto action (e.g., 'download github' or 'update vscode')"
+                }
+            },
+            "required": ["action"]
+        }
+    },
+    {
+        "name": "session_trace",
+        "description": (
+            "Captures, summarizes, or exports the current Kree session trace. "
+            "Use when the user asks to save a trace, export a session log, inspect recent events, or review what Kree did."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": "summary | export | status"
+                },
+                "label": {
+                    "type": "STRING",
+                    "description": "Optional filename label for exports"
+                },
+                "limit": {
+                    "type": "INTEGER",
+                    "description": "Optional maximum number of events to include"
+                }
+            },
+            "required": ["action"]
         }
     },
 {
@@ -502,12 +672,549 @@ class JarvisLive:
         self._welcomed: bool                               = False
         self.sync_audio_out_queue: Any                     = None
         self.bot_is_speaking: bool                         = False
+        self._pending_open_and_delegate: Optional[dict[str, str]] = None
+        self._quick_task_lock = threading.Lock()
+        self._audio_settings = load_audio_settings()
+        self._vad_rising = int(self._audio_settings.get("vad_threshold_rising", 220) or 220)
+        self._vad_falling = int(self._audio_settings.get("vad_threshold_falling", 160) or 160)
+        self._partial_confidence_min = float(self._audio_settings.get("partial_confidence_min", 0.62) or 0.62)
+        self._partial_flush_seconds = float(self._audio_settings.get("partial_flush_seconds", 2.6) or 2.6)
+        self._tool_gate_window_seconds = float(self._audio_settings.get("tool_gate_window_seconds", 8.0) or 8.0)
+        self._voice_command_armed_until = 0.0
+        self._armed_tool_budget = 0
+        self._last_user_transcript = ""
+        self._telemetry = TelemetryLogger(BASE_DIR, load_telemetry_settings())
+        self._telemetry.set_context(component="main", model=LIVE_MODEL)
+        self._trace(TelemetryEvents.SESSION_INIT, "Kree runtime initialized")
 
         self.ui.on_user_text = self._on_user_text
 
+    def _trace(self, event_type: str, message: str = "", **fields: Any) -> None:
+        telemetry = getattr(self, "_telemetry", None)
+        if telemetry is None:
+            return
+        try:
+            telemetry.event(event_type, message, **fields)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _normalize_text_input(text: Any) -> str:
+        return unicodedata.normalize("NFC", str(text or "")).strip()
+
+    @staticmethod
+    def _sanitize_multilingual_transcript(text: str) -> str:
+        t = JarvisLive._normalize_text_input(text)
+        if not t:
+            return ""
+        low = t.casefold()
+
+        if "<noise>" in low or "[noise]" in low:
+            return ""
+
+        # Reject repeated-character fragments often produced by ambient noise.
+        for ch in "abcdefghijklmnopqrstuvwxyz":
+            if ch * 4 in low:
+                return ""
+
+        # Reject mostly punctuation fragments.
+        punct = sum(c in ".,;:!?-_/\\|[]{}()<>" for c in t)
+        if punct / max(len(t), 1) > 0.5:
+            return ""
+
+        return t
+
+    @staticmethod
+    def _strip_leading_noise(text: str) -> str:
+        cleaned = re.sub(r"^[\s\d\W_]+", "", (text or "").casefold())
+        cleaned = re.sub(r"^(hey|ok|okay|please|uh|um|yo|listen)\b[\s,.-]*", "", cleaned)
+        return cleaned.strip()
+
+    def _should_arm_command_window(self, text: str) -> bool:
+        cleaned = self._strip_leading_noise(text)
+        if not cleaned:
+            return False
+
+        words = [part for part in cleaned.split() if part]
+        first_five = " ".join(words[:5])
+
+        # Direct or polite command, but only when it is clearly actionable.
+        command_markers = (
+            "open", "launch", "start", "run", "install", "download", "update",
+            "search", "find", "check", "weather", "send", "remind", "call",
+            "chrome", "youtube", "browser", "app",
+        )
+        polite_prefixes = (
+            "can you", "could you", "would you", "will you",
+            "please", "hey", "ok", "okay",
+        )
+        action_window = " ".join(words[:6])
+        has_action = any(marker in action_window for marker in command_markers)
+        short_enough = len(words) <= 10
+        starts_like_command = cleaned.startswith(("open ", "launch ", "start ", "run ", "install ", "download ", "update ", "search ", "find ", "check ", "send ", "remind ", "call "))
+        polite_request = cleaned.startswith(polite_prefixes)
+
+        return has_action and short_enough and (starts_like_command or polite_request or any(marker in first_five for marker in command_markers))
+
+    def _arm_command_window(self, source_text: str) -> None:
+        self._last_user_transcript = self._sanitize_multilingual_transcript(source_text)
+        self._voice_command_armed_until = time.monotonic() + self._tool_gate_window_seconds
+        self._armed_tool_budget = 2
+
+    def _is_command_window_armed(self) -> bool:
+        return time.monotonic() <= self._voice_command_armed_until and self._armed_tool_budget > 0
+
+    def _consume_command_window(self) -> None:
+        self._armed_tool_budget = max(0, int(self._armed_tool_budget) - 1)
+        if self._armed_tool_budget <= 0:
+            self._voice_command_armed_until = 0.0
+
+    @staticmethod
+    def _has_explicit_command_intent(text: str) -> bool:
+        low = (text or "").casefold()
+        if not low:
+            return False
+        markers = (
+            "open", "launch", "start", "run", "install", "download", "update",
+            "search", "weather", "send", "set reminder", "call", "chrome", "youtube",
+            "kree", "jarvis", "please", "hey", "ok", "can you", "could you", "would you", "will you",
+        )
+        return any(m in low for m in markers)
+
+    @staticmethod
+    def _merge_partial(prev: str, new: str) -> str:
+        """Merge streaming transcription chunks into a best-effort full sentence."""
+        p = (prev or "").strip()
+        n = (new or "").strip()
+        if not n:
+            return p
+        if not p:
+            return n
+
+        # Common streaming case: latest text is cumulative.
+        if n.startswith(p):
+            return n
+        if p.startswith(n):
+            return p
+        if n in p:
+            return p
+        if p in n:
+            return n
+
+        # Overlap-aware stitch (prefix/suffix) for fragmented chunks.
+        max_olap = min(len(p), len(n), 40)
+        for k in range(max_olap, 2, -1):
+            if p[-k:].lower() == n[:k].lower():
+                return (p + n[k:]).strip()
+
+        # If partials are very different, prefer latest hypothesis instead of forcing append.
+        sim = difflib.SequenceMatcher(None, p.lower(), n.lower()).ratio()
+        if sim < 0.35:
+            return n
+
+        # Last resort: append unseen chunk.
+        return (p + " " + n).strip()
+
+    @staticmethod
+    def _extract_open_and_ask_intent(text: str) -> dict[str, str] | None:
+        """Parse requests like: open X and Y and ask Z to do Q."""
+        pattern = re.compile(
+            r"\bopen\s+(?P<targets>.+?)\s+and\s+ask\s+(?P<agent>[^,.;!?]+?)\s+to\s+(?P<prompt>.+)",
+            re.IGNORECASE,
+        )
+        m = pattern.search(text)
+        if not m:
+            return None
+        targets = m.group("targets").strip()
+        agent = m.group("agent").strip()
+        prompt = m.group("prompt").strip()
+        if not targets or not agent or not prompt:
+            return None
+        return {"targets": targets, "agent": agent, "prompt": prompt}
+
+    @staticmethod
+    def _parse_direct_open_intent(text: str) -> dict[str, str] | None:
+        """Parse direct launch requests like: open codex or open codex and github."""
+        normalized = JarvisLive._normalize_text_input(text)
+        if not normalized:
+            return None
+
+        low = normalized.lower()
+        low = re.sub(r"^\s*(?:hey\s+|ok\s+|okay\s+|please\s+)?(?:kree|jarvis)\b[\s,:-]*", "", low, flags=re.IGNORECASE)
+        low = re.sub(
+            r"^\s*(?:can you|could you|would you|will you|can u|could u|would u|will u|please|hey|ok|okay)\b[\s,.-]*",
+            "",
+            low,
+            flags=re.IGNORECASE,
+        )
+
+        if " and ask " in low:
+            return None
+
+        m = re.match(r"^(open|launch|start|run)\b\s+(?P<target>.+)$", low)
+        if not m:
+            return None
+
+        target = m.group("target").strip(" .,!?:;\"")
+        if not target:
+            return None
+
+        target = re.split(r"\b(?:for me|please|so you can|so i can)\b", target, maxsplit=1)[0].strip(" .,!?:;\"")
+        if not target:
+            return None
+
+        targets = [piece.strip(" .,!?:;\"") for piece in re.split(r"\s+(?:and|&)\s+|,\s*", target) if piece.strip(" .,!?:;\"")]
+        if not targets:
+            return None
+
+        if len(targets) == 1:
+            return {"action": "open_app", "app_name": targets[0]}
+
+        return {
+            "action": "openapps_automation",
+            "targets": " and ".join(targets),
+            "fallback": "browser",
+        }
+
+    @staticmethod
+    def _parse_trace_intent(text: str) -> dict[str, Any] | None:
+        normalized = JarvisLive._normalize_text_input(text).lower()
+        if not normalized:
+            return None
+
+        normalized = re.sub(r"^\s*(hey\s+|ok\s+|okay\s+|please\s+)?(kree|jarvis)\b[\s,:-]*", "", normalized, flags=re.IGNORECASE)
+
+        if not any(marker in normalized for marker in ("trace", "log", "session bundle", "export session")):
+            return None
+
+        if any(marker in normalized for marker in ("save", "export", "download")):
+            return {"action": "export", "label": "session_trace"}
+
+        if any(marker in normalized for marker in ("summary", "summarize", "summarise", "overview")):
+            return {"action": "summary"}
+
+        if any(marker in normalized for marker in ("status", "show", "view", "recent")):
+            return {"action": "status"}
+
+        return {"action": "export", "label": "session_trace"}
+
+    def _trace_summary(self, limit: int = 200) -> str:
+        log_file = getattr(self._telemetry, "log_file", None)
+        session_id = getattr(self._telemetry, "session_id", "")
+        if not log_file or not session_id:
+            return "Trace is not available right now."
+
+        events = load_session_events(log_file, session_id, limit=limit)
+        if not events:
+            return "No trace events have been captured yet."
+
+        counts: dict[str, int] = {}
+        user_turns = 0
+        tool_calls = 0
+        for event in events:
+            event_type = str(event.get("event_type", "unknown"))
+            counts[event_type] = counts.get(event_type, 0) + 1
+            if event_type in {TelemetryEvents.USER_TEXT, TelemetryEvents.INPUT_TRANSCRIPT}:
+                user_turns += 1
+            if event_type == TelemetryEvents.TOOL_CALL:
+                tool_calls += 1
+
+        recent = ", ".join(str(event.get("event_type", "unknown")) for event in events[-5:])
+        return (
+            f"Trace summary: {len(events)} events, {user_turns} user turns, {tool_calls} tool calls. "
+            f"Latest events: {recent or 'none'}."
+        )
+
+    def _export_trace(self, label: str = "session_trace") -> str:
+        try:
+            trace_path = export_session_trace(BASE_DIR, self._telemetry, label=label)
+            return f"Saved trace to {trace_path}"
+        except Exception as e:
+            return f"Failed to export trace: {e}"
+
+    @staticmethod
+    def _tool_context(name: str, args: dict[str, Any]) -> tuple[str, str]:
+        app = (
+            str(args.get("app_name") or args.get("app") or args.get("delegate_app") or "")
+            .strip()
+        )
+        cmd = ""
+        for k in ("command", "task", "goal", "description", "action", "task_name", "prompt"):
+            val = args.get(k)
+            if val:
+                cmd = str(val).strip()
+                break
+        if not cmd:
+            cmd = json.dumps(args)[:220]
+        if not app and name == "openapps_automation":
+            app = "Kree automation"
+        return app, cmd
+
+    def _resolve_pending_choice(self, text: str) -> bool:
+        if not self._pending_open_and_delegate:
+            return False
+
+        low = text.lower()
+        choice = ""
+        if ("download" in low) or ("install" in low):
+            choice = "download"
+        elif ("browser" in low) or ("web" in low):
+            choice = "browser"
+
+        if not choice:
+            return False
+
+        pending = dict(self._pending_open_and_delegate)
+        self._pending_open_and_delegate = None
+
+        def _resolve_pending():
+            try:
+                r = openapps_automation(
+                    parameters={
+                        "action": "open_and_delegate",
+                        "targets": pending.get("targets", ""),
+                        "delegate_app": pending.get("agent", ""),
+                        "prompt": pending.get("prompt", ""),
+                        "fallback": choice,
+                    },
+                    response=None,
+                    player=self.ui,
+                    session_memory=None,
+                )
+                self.ui.write_log(f"Kree: {r}")
+                self.speak("Done. Proceeding with your selected option.")
+            except Exception as e:
+                self.ui.write_log(f"Kree: Failed to continue workflow: {e}")
+
+        threading.Thread(target=_resolve_pending, daemon=True).start()
+        return True
+
+    @staticmethod
+    def _parse_quick_package_intent(text: str) -> dict[str, str] | None:
+        t = JarvisLive._normalize_text_input(text)
+        if not t:
+            return None
+
+        low = t.lower()
+        # Remove common assistant-address prefixes from the front for cleaner parsing.
+        low = re.sub(r"^\s*(hey\s+|ok\s+|okay\s+|please\s+)?(kree|jarvis)\b[\s,:-]*", "", low, flags=re.IGNORECASE)
+
+        if "check updates" in low or "check update" in low:
+            return {"action": "check_updates"}
+        if "update all" in low or "upgrade all" in low:
+            return {"action": "update_all"}
+
+        url_match = re.search(r"https?://\S+", low)
+        if low.startswith("download ") and url_match:
+            return {"action": "download_file", "url": url_match.group(0)}
+
+        # Route broader natural-language commands to smart mode.
+        quick_keywords = (
+            "download",
+            "install",
+            "update",
+            "upgrade",
+            "search app",
+            "find app",
+            "is installed",
+            "status",
+        )
+        if any(k in low for k in quick_keywords):
+            return {"action": "auto", "query": low}
+
+        m_install = re.match(r"^(install|download)\s+(.+)$", low)
+        if m_install:
+            target = m_install.group(2).strip(" .,!?")
+            if target:
+                return {"action": "install_app", "target": target}
+
+        m_update = re.match(r"^(update|upgrade)\s+(.+)$", low)
+        if m_update:
+            target = m_update.group(2).strip(" .,!?")
+            if target:
+                return {"action": "update_app", "target": target}
+
+        return None
+
     def _on_user_text(self, text: str):
         """Called when user types a message in the UI."""
+        text = self._normalize_text_input(text)
+        if not text:
+            return
+        self._trace(TelemetryEvents.USER_TEXT, text=text)
+        # Typed input is considered explicit user intent and arms one tool-execution window.
+        self._arm_command_window(text)
         print(f"[JARVIS] 💬 Received text command from UI: {text}")
+        low = text.lower()
+
+        if self._resolve_pending_choice(text):
+            return
+
+        quick_intent = self._parse_quick_package_intent(text)
+        if quick_intent:
+            def _run_quick_package_task():
+                with self._quick_task_lock:
+                    try:
+                        r = downloader_updater(
+                            parameters=quick_intent,
+                            response=None,
+                            player=self.ui,
+                            session_memory=None,
+                        )
+                        self.ui.write_log(f"Kree: {r}")
+                        self.speak(str(r))
+                    except Exception as e:
+                        self.ui.write_log(f"Kree: Package task failed: {e}")
+
+            threading.Thread(target=_run_quick_package_task, daemon=True).start()
+            return
+
+        if "start kree automation environment" in low:
+            def _start_env():
+                try:
+                    r = openapps_automation(
+                        parameters={"action": "start_kree_automation_environment"},
+                        response=None,
+                        player=self.ui,
+                        session_memory=None,
+                    )
+                    self.ui.write_log(f"Kree: {r}")
+                    self.speak("Kree automation environment is starting now.")
+                except Exception as e:
+                    self.ui.write_log(f"Kree: Failed to start automation environment: {e}")
+
+            threading.Thread(target=_start_env, daemon=True).start()
+            return
+
+        trace_intent = self._parse_trace_intent(text)
+        if trace_intent:
+            def _run_trace_action():
+                with self._quick_task_lock:
+                    try:
+                        action = trace_intent.get("action")
+                        if action == "summary":
+                            r = self._trace_summary()
+                        elif action == "status":
+                            log_file = getattr(self._telemetry, "log_file", None)
+                            session_id = getattr(self._telemetry, "session_id", "")
+                            event_count = len(load_session_events(log_file, session_id, limit=25)) if log_file and session_id else 0
+                            r = f"Trace is active for session {session_id}. Recent events captured: {event_count}."
+                        else:
+                            r = self._export_trace(trace_intent.get("label", "session_trace"))
+                        self.ui.write_log(f"Kree: {r}")
+                        self.speak(str(r))
+                    except Exception as e:
+                        self.ui.write_log(f"Kree: Trace action failed: {e}")
+
+            threading.Thread(target=_run_trace_action, daemon=True).start()
+            return
+
+        direct_open = self._parse_direct_open_intent(text)
+        if direct_open:
+            def _run_direct_open():
+                with self._quick_task_lock:
+                    try:
+                        if direct_open.get("action") == "open_app":
+                            r = open_app(
+                                parameters={"app_name": direct_open.get("app_name", "")},
+                                response=None,
+                                player=self.ui,
+                                session_memory=None,
+                            )
+                        else:
+                            r = openapps_automation(
+                                parameters={
+                                    "action": "open_and_delegate",
+                                    "targets": direct_open.get("targets", ""),
+                                    "delegate_app": "",
+                                    "prompt": "",
+                                    "fallback": direct_open.get("fallback", "browser"),
+                                },
+                                response=None,
+                                player=self.ui,
+                                session_memory=None,
+                            )
+                        self.ui.write_log(f"Kree: {r}")
+                        self.speak(str(r))
+                    except Exception as e:
+                        self.ui.write_log(f"Kree: Direct open failed: {e}")
+
+            threading.Thread(target=_run_direct_open, daemon=True).start()
+            return
+
+        parsed = self._extract_open_and_ask_intent(text)
+        # Heuristic fallback for imperfect ASR when user clearly asks Codex+GitHub app workflow.
+        if not parsed and ("codex" in low and "github" in low and ("app" in low or "build" in low or "make" in low)):
+            parsed = {
+                "targets": "codex and github",
+                "agent": "codex",
+                "prompt": text if len(text.strip()) >= 8 else "Build an app based on the user request.",
+            }
+
+        if parsed:
+            delegate = parsed["agent"].strip().lower()
+            if delegate in {"it", "them", "that", "this"}:
+                first_target = parsed["targets"].split(" and ")[0].split(",")[0].strip()
+                if first_target:
+                    parsed["agent"] = first_target
+
+            def _macro_generic():
+                try:
+                    r = openapps_automation(
+                        parameters={
+                            "action": "open_and_delegate",
+                            "targets": parsed["targets"],
+                            "delegate_app": parsed["agent"],
+                            "prompt": parsed["prompt"],
+                            "fallback": "ask",
+                        },
+                        response=None,
+                        player=self.ui,
+                        session_memory=None,
+                    )
+
+                    if isinstance(r, str) and r.startswith("QUESTION:"):
+                        self._pending_open_and_delegate = {
+                            "targets": parsed["targets"],
+                            "agent": parsed["agent"],
+                            "prompt": parsed["prompt"],
+                        }
+                        q = r.replace("QUESTION:", "").strip()
+                        self.ui.write_log(f"Kree: {q}")
+                        self.speak(q)
+                        return
+
+                    # If native Codex path likely opened, try to type user prompt directly.
+                    if ("native:" in str(r).lower()) and ("codex" in parsed["agent"].lower()):
+                        try:
+                            computer_control(
+                                parameters={"action": "focus_window", "title": "ChatGPT"},
+                                player=self.ui,
+                            )
+                            time.sleep(0.4)
+                            computer_control(
+                                parameters={
+                                    "action": "smart_type",
+                                    "text": parsed["prompt"],
+                                    "clear_first": False,
+                                },
+                                player=self.ui,
+                            )
+                            computer_control(
+                                parameters={"action": "press", "key": "enter"},
+                                player=self.ui,
+                            )
+                        except Exception:
+                            pass
+
+                    self.ui.write_log(f"Kree: {r}")
+                    self.speak("Launching your automation workflow now.")
+                except Exception as e:
+                    self.ui.write_log(f"Kree: Automation failed: {e}")
+
+            threading.Thread(target=_macro_generic, daemon=True).start()
+            return
+
         self.speak(text)
 
     def speak(self, text: str):
@@ -543,19 +1250,32 @@ class JarvisLive:
         # Prioritize Language Constraints at the very top of the logic
         sys_prompt = (
             "<BILINGUAL_PROTOCOL>\n"
-            "USER_LANGUAGES: [Indian English (en-IN), Hindi (hi-IN)]\n"
+            "USER_LANGUAGES: [Indian English (en-IN), Hindi (hi-IN), Telugu (te-IN), Gujarati (gu-IN), Sinhala (si-LK), Tamil (ta-IN)]\n"
             "USER_ACCENT: Expect the user to have an Indian subcontinent accent. They may pronounce 'v' as 'w' or use retroflex 't' and flat vowels.\n"
             "YOUR_VOICE: Use a crisp, professional American accent for all your spoken responses.\n"
-            "WAKE_WORD: Your name is 'Kree'. The user MUST begin their command with 'Hey Kree', 'Ok Kree', or 'Kree'. If they do not say your name, IGNORE the speech entirely.\n"
+            "ADDRESSING: Respond to direct user commands without requiring a wake phrase.\n"
             "STRICT_MODE: ON\n"
             "INSTRUCTIONS:\n"
-            "1. You are a bilingual assistant for Indian users. Understand Indian-accented English and Hindi flawlessly.\n"
-            "2. If you hear Malayalam, Arabic, Sinhala, Thai, or random static, IGNORE IT completely.\n"
-            "3. Reply in Hindi if the user spoke Hindi. Reply in English if the user spoke English.\n"
+            "1. You are a multilingual assistant for South Asian users. Understand Indian-accented English, Hindi, Telugu, Gujarati, Sinhala, and Tamil.\n"
+            "2. Ignore random static/noise, but do not ignore valid South Asian language speech.\n"
+            "3. Reply in the same language user spoke whenever possible.\n"
             "4. Be confident — just respond to commands, do not explain your language limitations.\n"
             "</BILINGUAL_PROTOCOL>\n\n"
         )
         sys_prompt += _load_system_prompt()
+
+        sys_prompt += (
+            "\n\n<KREE_AUTOMATION_ROUTING>\n"
+            "When user asks 'Start Kree automation environment', call tool openapps_automation "
+            "with action='start_kree_automation_environment'.\n"
+            "When user asks things like 'open X and Y and ask Z to ...', call openapps_automation "
+            "with action='open_and_delegate', targets='X and Y', delegate_app='Z', prompt='...'.\n"
+            "When user asks to save, export, summarize, or inspect the current session trace, call tool session_trace.\n"
+            "When user asks to inspect OpenApps capabilities, use list_apps/list_agents/list_tasks and summarize.\n"
+            "When user asks about legal/copyright safety for OpenApps, call action='license_info'.\n"
+            "For opening normal desktop apps, continue using open_app.\n"
+            "</KREE_AUTOMATION_ROUTING>\n"
+        )
 
         now      = datetime.now()
         time_str = now.strftime("%A, %B %d, %Y — %I:%M %p")
@@ -580,7 +1300,7 @@ class JarvisLive:
             session_resumption=types.SessionResumptionConfig(),
             realtime_input_config=types.RealtimeInputConfig(
                 automatic_activity_detection=types.AutomaticActivityDetection(
-                    disabled=True  # Client variance-gate has full control
+                    disabled=True  # Explicit activity markers are sent by the client gate.
                 )
             ),
             speech_config=types.SpeechConfig(
@@ -596,17 +1316,122 @@ class JarvisLive:
         name = fc.name
         args = dict(fc.args or {})
 
+        # Normalize common free-text fields to avoid Unicode drift between ASR, model, and tool layer.
+        for k in ("target", "query", "app", "app_name", "description", "task", "prompt"):
+            if k in args and args[k] is not None:
+                args[k] = self._normalize_text_input(args[k])
+
+        if name == "downloader_updater" and "target" in args:
+            target_val = str(args.get("target") or "").strip()
+            if len(target_val) > 120:
+                target_val = target_val[:120].strip()
+            args["target"] = target_val
+
+        dangerous_tools = {"computer_control", "web_search"}
+        if name in dangerous_tools and not self._is_command_window_armed():
+            msg = (
+                "Blocked tool execution because no recent command window is active. "
+                "Speak your command clearly and directly."
+            )
+            self._trace(TelemetryEvents.TOOL_BLOCKED, msg, tool=name, reason="unarmed", args=args)
+            print(f"[JARVIS] 🛡️ Tool blocked: {name} (unarmed)")
+            return types.FunctionResponse(
+                id=fc.id,
+                name=name,
+                response={"result": msg},
+            )
+
+        if name in dangerous_tools and not self._has_explicit_command_intent(self._last_user_transcript):
+            msg = (
+                "Blocked tool execution because transcript intent was not explicit enough. "
+                "Please repeat with a clear command."
+            )
+            self._trace(TelemetryEvents.TOOL_BLOCKED, msg, tool=name, reason="weak-intent", args=args)
+            print(f"[JARVIS] 🛡️ Tool blocked: {name} (weak-intent)")
+            return types.FunctionResponse(
+                id=fc.id,
+                name=name,
+                response={"result": msg},
+            )
+
+        # Consume the window only for gated tools so safe app launches are not blocked.
+        if name in dangerous_tools:
+            self._consume_command_window()
+        self._trace(TelemetryEvents.TOOL_CALL, f"Tool call: {name}", tool=name, args=args)
+
         print(f"[JARVIS] 🔧 TOOL: {name}  ARGS: {args}")
 
         loop   = asyncio.get_event_loop()
         result = "Done."
+        app_ctx, cmd_ctx = self._tool_context(name, args)
+        self.ui.show_action_loading(name, app_ctx, cmd_ctx)
+        self.ui.push_action_log(f"Starting {name}")
+        if app_ctx:
+            self.ui.push_action_log(f"App: {app_ctx}")
+        if cmd_ctx:
+            self.ui.push_action_log(f"Command: {cmd_ctx[:180]}")
 
         try:
             if name == "open_app":
                 r = await loop.run_in_executor(
                     None, functools.partial(open_app, parameters=args, response=None, player=self.ui)  # type: ignore[arg-type]
                 )
-                result = r or f"Opened {args.get('app_name')} successfully."
+                if isinstance(r, str) and r.strip():
+                    result = r
+                else:
+                    result = f"Opened {args.get('app_name')} successfully."
+
+            elif name == "openapps_automation":
+                r = await loop.run_in_executor(
+                    None, functools.partial(  # type: ignore[arg-type]
+                        openapps_automation,
+                        parameters=args,
+                        response=None,
+                        player=self.ui,
+                        session_memory=None,
+                    )
+                )
+                if isinstance(r, str) and r.strip():
+                    result = r
+                else:
+                    result = "OpenApps automation completed."
+                if isinstance(result, str) and result.startswith("QUESTION:"):
+                    q = result.replace("QUESTION:", "").strip()
+                    self._pending_open_and_delegate = {
+                        "targets": str(args.get("targets", "")),
+                        "agent": str(args.get("delegate_app", "")),
+                        "prompt": str(args.get("prompt", "")),
+                    }
+                    self.ui.write_log(f"Kree: {q}")
+                    self.speak(q)
+                    result = q
+
+            elif name == "downloader_updater":
+                r = await loop.run_in_executor(
+                    None, functools.partial(  # type: ignore[arg-type]
+                        downloader_updater,
+                        parameters=args,
+                        response=None,
+                        player=self.ui,
+                        session_memory=None,
+                    )
+                )
+                result = r or "Download/update action completed."
+
+            elif name == "session_trace":
+                trace_action = str(args.get("action", "")).strip().lower()
+                trace_label = str(args.get("label", "session_trace")).strip() or "session_trace"
+                trace_limit = int(args.get("limit", 200) or 200)
+
+                if trace_action == "summary":
+                    result = self._trace_summary(limit=trace_limit)
+                elif trace_action == "status":
+                    log_file = getattr(self._telemetry, "log_file", None)
+                    session_id = getattr(self._telemetry, "session_id", "")
+                    event_count = len(load_session_events(log_file, session_id, limit=min(trace_limit, 50))) if log_file and session_id else 0
+                    result = f"Trace is active for session {session_id}. Recent events captured: {event_count}."
+                else:
+                    result = self._export_trace(label=trace_label)
 
             elif name == "weather_report":
                 r = await loop.run_in_executor(
@@ -743,7 +1568,14 @@ class JarvisLive:
             
         except Exception as e:
             result = f"Tool '{name}' failed: {e}"
+            self._trace(TelemetryEvents.TOOL_RESULT, result, tool=name, status="error")
             traceback.print_exc()
+        finally:
+            self.ui.push_action_log(f"Finished {name}")
+            self.ui.hide_action_loading()
+
+        if "failed" not in str(result).lower():
+            self._trace(TelemetryEvents.TOOL_RESULT, str(result), tool=name, status="ok")
 
         print(f"[JARVIS] 📤 {name} → {str(result)[:80]}")  # type: ignore[index]
 
@@ -777,6 +1609,9 @@ class JarvisLive:
                     await self.session.send_realtime_input(text=msg.get("text"))
                     print(f"[JARVIS] MIC: 🎭 Emotion Injected: {msg.get('text')[:40]}...")
                     continue
+
+                if "data" not in msg or "mime_type" not in msg:
+                    continue
                 
                 # Handle normal audio frames
                 await self.session.send_realtime_input(
@@ -798,7 +1633,16 @@ class JarvisLive:
             print("[JARVIS] ❌ No audio device — mic disabled.")
             return
         try:
-            device_info = pya.get_default_input_device_info()
+            device_index = self._audio_settings.get("input_device_index")
+            if device_index is not None:
+                try:
+                    device_info = pya.get_device_info_by_index(int(device_index))
+                except Exception:
+                    device_info = pya.get_default_input_device_info()
+                    device_index = device_info.get("index")
+            else:
+                device_info = pya.get_default_input_device_info()
+                device_index = device_info.get("index")
             dev_name = device_info.get("name", "Unknown")
             print(f"[JARVIS] 🎤 Mic started (Device: {dev_name})")
             
@@ -808,6 +1652,7 @@ class JarvisLive:
                 channels=CHANNELS,
                 rate=SEND_SAMPLE_RATE,
                 input=True,
+                input_device_index=device_index,
                 frames_per_buffer=CHUNK_SIZE,
             )
         except Exception as e:
@@ -816,85 +1661,67 @@ class JarvisLive:
 
         import collections
         try:
+            import math
+            import array
+
             _empty_chunks = 0
             _rms_history = []
             _gate_timer: int = 0
-            
+
             # VAD Properties
+            _ui_speaking_state: bool = False
             _pre_roll = collections.deque(maxlen=10)  # 640ms pre-roll buffer (keeps it fast)
             _rms_window = collections.deque(maxlen=3)  # Smoothing window
-            _rms_history = collections.deque(maxlen=50) # Volume bar history
-            _dynamic_thresh: float = 500.0  # Adapts via variance-gated EMA
+            _rms_history = collections.deque(maxlen=50)  # Volume bar history
+            _dynamic_thresh: float = 500.0
             _prev_sample: int = 0
-            _dc_offset: float = 0.0 # Mathematically centers the audio waveform
-            _alpha: float = 0.85  # DSP Pre-Emphasis Speech Clarity Coefficient
-            _trigger_count: int = 0 # Prevents single clicks from opening gate
-            _ui_speaking_state: bool = False # Prevents JS spam
-            _ambient_variance: float = 50.0  # Auto-calibrating room noise floor
-            _agc_gain = 1.0 
-            
+            _dc_offset: float = 0.0
+            _alpha: float = 0.85
+            _trigger_count: int = 0
+            _ambient_variance: float = 50.0
+            _agc_gain = 1.0
+            print("[JARVIS] 🎙️ SMART MIC MODE: variance-gated speech filtering")
+
             while True:
                 data = await asyncio.to_thread(
                     stream.read, CHUNK_SIZE, exception_on_overflow=False
                 )
-                
-                # IMPORTANT: Preserve the original raw audio for Gemini transmission.
-                # Gemini's native audio model was trained on natural mic input.
-                # We only use DSP-filtered audio for our VAD gate decisions.
-                raw_data = data  # This is what Gemini will receive
-                
-                import math
-                import array
+
+                raw_data = data
                 rms = 0
                 try:
                     samples = array.array('h', data)
-                    
-                    # DSP Analysis Pipeline (for VAD decisions ONLY, not sent to Gemini)
-                    # We calculate RMS on filtered audio to get accurate gate triggers,
-                    # but Gemini receives the raw, unprocessed microphone signal.
-                    for i in range(len(samples)): # type: ignore[arg-type]
-                        current = int(samples[i])
-                        
-                        # DC-Offset Removal (for clean RMS calculation)
-                        _dc_offset = 0.999 * _dc_offset + 0.001 * current # type: ignore[operator]
-                        centered = current - int(_dc_offset)
-                        
-                        # Pre-Emphasis (for clean variance calculation)
-                        filtered = centered - int(_alpha * _prev_sample) # type: ignore[operator]
-                        _prev_sample = centered
-                        
-                        if filtered > 32767: filtered = 32767
-                        elif filtered < -32768: filtered = -32768
-                        samples[i] = filtered
-                    
-                    # NOTE: We do NOT overwrite `data` with filtered samples.
-                    # `data` stays as the raw mic input for Gemini.
-                    # `samples` is only used below for RMS/variance gate logic.
 
-                    # Recalculate physical RMS on the DSP-cleaned signal (for gate only)
+                    for i in range(len(samples)):  # type: ignore[arg-type]
+                        current = int(samples[i])
+                        _dc_offset = 0.999 * _dc_offset + 0.001 * current
+                        centered = current - int(_dc_offset)
+                        filtered = centered - int(_alpha * _prev_sample)
+                        _prev_sample = centered
+                        if filtered > 32767:
+                            filtered = 32767
+                        elif filtered < -32768:
+                            filtered = -32768
+                        samples[i] = filtered
+
                     s_list = list(samples)
                     s_len = len(s_list)
-                    rms = math.sqrt(sum(s*s for s in s_list) / s_len) if s_len > 0 else 0
-                    
-                    _rms_history.append(rms)  # type: ignore[arg-type]
-                    _rms_window.append(rms)   # type: ignore[arg-type]
+                    rms = math.sqrt(sum(s * s for s in s_list) / s_len) if s_len > 0 else 0
+                    _rms_history.append(rms)
+                    _rms_window.append(rms)
                 except Exception:
                     pass
 
-                # 5. Advanced Vocal Variance & Signal Logging
-                # We calculate the deviation in sound. Static fans have very low variance,
-                # while human speech has high dynamic range (high variance).
                 s_list_var = list(_rms_window)
-                rms_count = len(s_list_var) # type: ignore[arg-type]
-                smoothed_rms = sum(s_list_var) / float(rms_count) if rms_count > 0 else 0 # type: ignore[arg-type]
+                rms_count = len(s_list_var)
+                smoothed_rms = sum(s_list_var) / float(rms_count) if rms_count > 0 else 0
                 variance = 0.0
                 if rms_count > 1:
                     avg = smoothed_rms
-                    variance = math.sqrt(sum((x - avg)**2 for x in s_list_var) / float(rms_count)) # type: ignore[arg-type]
+                    variance = math.sqrt(sum((x - avg) ** 2 for x in s_list_var) / float(rms_count))
 
-                # Log adaptive threshold info
                 s_list_hist = list(_rms_history)
-                hist_count = len(s_list_hist) # type: ignore[arg-type]
+                hist_count = len(s_list_hist)
                 if hist_count >= 23:
                     peak = max(_rms_history)
                     if peak > 150:
@@ -902,109 +1729,89 @@ class JarvisLive:
                         bar = bars[min(7, int(peak / 2000 * 7))]
                         print(f"   [MIC VOL] {bar} (Peak: {int(peak)} | Thresh: {int(_dynamic_thresh)} | Var: {int(variance)})")
                     _rms_history.clear()
-                
-                # ── Variance-based Speech Gate ──────────────────────────────────────
-                # Key insight from logs: Fan noise variance = 0-74, Speech variance = 300-1200+
-                # We gate on VARIANCE, not energy, since fan energy overlaps with speech energy.
-                
+
                 send_data = raw_data
-                
+
                 if not getattr(self.ui, "_mic_active", True):
-                    send_data = b'\x00' * len(raw_data) # type: ignore[arg-type]
+                    send_data = b'\x00' * len(raw_data)  # type: ignore[arg-type]
                     _gate_timer = 0
                 elif getattr(self, "bot_is_speaking", False):
-                    # ── Breakthrough Interruption ───────────────────────────────────
-                    # If the user shouts (variance > 15x ambient noise floor), break through the mute lock.
                     if variance > max(400.0, _ambient_variance * 15.0):
-                        pass # Allow send_data to remain raw_data
+                        pass
                     else:
-                        send_data = b'\x00' * len(raw_data) # type: ignore[arg-type] # Normal Echo Cancel
+                        send_data = b'\x00' * len(raw_data)  # type: ignore[arg-type]
                         _gate_timer = 0
                 else:
-                    # ── Adaptive Variance VAD ──────────────────────────────────────
-                    # Update ambient baseline ONLY when variance is low/steady (fan/room noise)
                     if variance < 150:
                         _ambient_variance = 0.99 * _ambient_variance + 0.01 * variance
                         _ambient_variance = max(10.0, min(500.0, _ambient_variance))
-                    
-                    # Gate triggers at 3x the room's noise floor (so it scales to any mic)
+
                     trigger_threshold = max(150.0, _ambient_variance * 3.0)
                     is_speech = variance >= trigger_threshold
-                    
+
                     if is_speech:
-                        _trigger_count = int(_trigger_count) + 1  # type: ignore
-                        
-                        # Zero-Latency Burst Trigger: If voice is extremely loud/clear, bypass the 2-chunk wait and open mic instantly
+                        _trigger_count = int(_trigger_count) + 1
                         if variance > max(300.0, _ambient_variance * 6.0):
                             _trigger_count = 2
-                            
-                        if _trigger_count >= 2:  # type: ignore
+
+                        if _trigger_count >= 2:
                             q = self.out_queue
                             if _gate_timer == 0 and q is not None:
-                                # Gate just opened!
                                 try:
                                     q.put_nowait({"type": "activity_start"})
-                                    
-                                    # EMOTION INJECTION: Map volume variance to user's tone
-                                    if variance < 400: # Whisper
+                                    if variance < 400:
                                         q.put_nowait({"type": "emotion", "text": "System Note: The user is speaking softly or whispering. Keep your reply extremely soft, brief, and concise."})
-                                    elif variance > 4000: # Shouting
+                                    elif variance > 4000:
                                         q.put_nowait({"type": "emotion", "text": "System Note: The user is speaking loudly and urgently. Respond urgently."})
-                                    
                                 except asyncio.QueueFull:
                                     pass
-                                
-                                # Flush pre-roll so sentence start isn't clipped
+
                                 while _pre_roll:
                                     try:
-                                        q.put_nowait({"data": _pre_roll.popleft(), "mime_type": f"audio/pcm;rate={SEND_SAMPLE_RATE}"})  # type: ignore[union-attr]
+                                        q.put_nowait({"data": _pre_roll.popleft(), "mime_type": f"audio/pcm;rate={SEND_SAMPLE_RATE}"})
                                     except asyncio.QueueFull:
                                         pass
-                            _gate_timer = 8  # 512ms hold for blazingly fast turn-taking (true Jarvis speed)
+                            _gate_timer = 8
                     else:
                         _trigger_count = 0
-                    
+
                     if _gate_timer > 0:
-                        _gate_timer -= 1 # type: ignore[operator]
-                        # Gate just closed
+                        _gate_timer -= 1  # type: ignore[operator]
                         q2 = self.out_queue
                         if _gate_timer == 0 and q2 is not None:
                             try:
                                 q2.put_nowait({"type": "activity_end"})
                             except asyncio.QueueFull:
                                 pass
-                        
-                        # ── STUDIO PROCESSOR: Auto Gain Control (AGC) & DRC ───────────
-                        # Boost quiet voices, compress shouting so Gemini hears perfect studio audio
+
                         target_rms = 1500.0
                         current_rms = float(smoothed_rms) if smoothed_rms > 10 else 10.0
                         gain = target_rms / current_rms
-                        
-                        # Dynamic Range Compression limits
-                        if gain > 4.0: gain = 4.0  # Max boost for whispers
-                        if gain < 0.5: gain = 0.5  # Max reduction for shouts
-                        
-                        # Apply gain instantly to the audio samples
-                        if abs(gain - 1.0) > 0.1:
-                            for i in range(len(samples)): # type: ignore[arg-type]
-                                val = int(samples[i] * gain)
-                                if val > 32767: val = 32767
-                                elif val < -32768: val = -32768
+                        if gain > 4.0:
+                            gain = 4.0
+                        if gain < 0.5:
+                            gain = 0.5
+                        _agc_gain = gain
+
+                        if abs(_agc_gain - 1.0) > 0.1:
+                            for i in range(len(samples)):  # type: ignore[arg-type]
+                                val = int(samples[i] * _agc_gain)
+                                if val > 32767:
+                                    val = 32767
+                                elif val < -32768:
+                                    val = -32768
                                 samples[i] = val
-                        
-                        # Send the fully cleaned, mixed Studio Audio to Gemini
+
                         send_data = samples.tobytes()
                     else:
-                        # Gate SHUT — store raw audio in pre-roll, mute output feed
-                        _pre_roll.append(raw_data) # type: ignore[attr-defined]
-                        send_data = b'\x00' * len(raw_data) # type: ignore[arg-type]
+                        _pre_roll.append(raw_data)
+                        send_data = b'\x00' * len(raw_data)  # type: ignore[arg-type]
 
-                # Orb Pulsing — glow when gate is open
                 _is_talking = bool(_gate_timer > 0)
                 if _is_talking != _ui_speaking_state:
                     _ui_speaking_state = _is_talking
                     try:
-                        self.ui.window.evaluate_js(f"setSpeaking({'true' if _is_talking else 'false'})")
+                        self.ui._eval(f"setSpeaking({'true' if _is_talking else 'false'})")
                     except Exception:
                         pass
 
@@ -1029,13 +1836,13 @@ class JarvisLive:
                     pass
 
     async def _listen_camera(self):
-        try:
-            import cv2  # type: ignore[import]
-        except ImportError:
+        if cv2 is None:
             print("[JARVIS] ❌ cv2 not installed — camera disabled.")
             return
 
         cap = None
+        last_ui_push = 0.0
+        last_gemini_push = 0.0
         try:
             print("[JARVIS] 📷 Camera ready. Awaiting UI trigger...")
             while True:
@@ -1051,41 +1858,72 @@ class JarvisLive:
                     await asyncio.sleep(0.5)
                     continue
 
+                if getattr(self.ui, "_disable_backend_camera_stream", False):
+                    if cap is not None:
+                        await asyncio.to_thread(cap.release)  # type: ignore
+                        cap = None
+                        try:
+                            self.ui._eval("if(typeof updateWebcam==='function') updateWebcam('');")
+                        except Exception:
+                            pass
+                    await asyncio.sleep(0.5)
+                    continue
+
                 if cap is None:
                     print("[JARVIS] 📷 Camera starting hardware capture...")
                     cap = await asyncio.to_thread(cv2.VideoCapture, 0, cv2.CAP_DSHOW)  # type: ignore
                     if not cap or not cap.isOpened():  # type: ignore
                         await asyncio.sleep(1)
                         continue
+                    try:
+                        await asyncio.to_thread(cap.set, cv2.CAP_PROP_FRAME_WIDTH, 640)  # type: ignore
+                        await asyncio.to_thread(cap.set, cv2.CAP_PROP_FRAME_HEIGHT, 360)  # type: ignore
+                    except Exception:
+                        pass
 
                 success, frame = await asyncio.to_thread(cap.read)  # type: ignore
                 if not success:
                     await asyncio.sleep(0.5)
                     continue
 
-                # Resize to reduce bandwidth
-                frame_resized = await asyncio.to_thread(cv2.resize, frame, (640, 480))
-                encoded, buffer = await asyncio.to_thread(cv2.imencode, ".jpg", frame_resized)
+                # Resize and lower JPEG quality to reduce CPU and bandwidth.
+                frame_resized = await asyncio.to_thread(cv2.resize, frame, (640, 360))
+                encoded, buffer = await asyncio.to_thread(
+                    cv2.imencode,
+                    ".jpg",
+                    frame_resized,
+                    [cv2.IMWRITE_JPEG_QUALITY, 65],
+                )
                 
-                if encoded and self.session is not None:
+                if not encoded:
+                    await asyncio.sleep(0.1)
+                    continue
+
+                now = time.monotonic()
+                jpeg_bytes = buffer.tobytes()
+
+                # Smooth fallback UI preview at ~8 FPS.
+                if self.ui._main_win and (now - last_ui_push) >= 0.125:
                     try:
-                        import google.genai.types as types # type: ignore[import]
-                        blob = types.Blob(data=buffer.tobytes(), mime_type="image/jpeg")
+                        b64_str = base64.b64encode(jpeg_bytes).decode('utf-8')
+                        self.ui._eval(
+                            f"if(typeof updateWebcam==='function') updateWebcam('data:image/jpeg;base64,{b64_str}');"
+                        )
+                    except Exception:
+                        pass
+                    last_ui_push = now
+
+                # Gemini camera feed is intentionally low-rate to control bandwidth and CPU.
+                if self.session is not None and (now - last_gemini_push) >= 1.0:
+                    try:
+                        blob = types.Blob(data=jpeg_bytes, mime_type="image/jpeg")
                         await self.session.send_realtime_input(media=blob)
                     except Exception as e:
                         if "429" not in str(e):
                             print(f"[JARVIS] ⚠️ Camera send error: {e}")
+                    last_gemini_push = now
                 
-                # Push to UI natively
-                if self.ui._main_win:
-                    import base64
-                    try:
-                        b64_str = base64.b64encode(buffer.tobytes()).decode('utf-8')
-                        self.ui._eval(f"if(typeof updateWebcam==='function') updateWebcam('data:image/jpeg;base64,{b64_str}');")
-                    except Exception:
-                        pass
-                
-                await asyncio.sleep(1.0)  # 1 FPS for Gemini Live Vision
+                await asyncio.sleep(0.03)
         except Exception as e:
             print(f"[JARVIS] ❌ Camera stream error: {e}")
         finally:
@@ -1136,18 +1974,14 @@ class JarvisLive:
                             txt = sc.input_transcription.text.strip()
                             if txt:
                                 print(f"[JARVIS] 🗣️  Heard: \"{txt}\"")
-                                in_buf.append(txt)  # type: ignore[attr-defined]
-                                # Show live in UI so user can see what Gemini heard
-                                try:
-                                    safe = txt.replace("'", "\\'").replace("\n", " ")
-                                    self.ui.window.evaluate_js(f"appendTranscript('user', '{safe}')")
-                                except Exception:
-                                    pass
+                                self._trace(TelemetryEvents.INPUT_TRANSCRIPT, txt)
+                                in_buf.append(txt)
 
                         if sc.output_transcription and sc.output_transcription.text:
                             txt = sc.output_transcription.text.strip()
                             if txt:
-                                out_buf.append(txt)  # type: ignore[attr-defined]
+                                self._trace(TelemetryEvents.OUTPUT_TRANSCRIPT, txt)
+                                out_buf.append(txt)
 
                         if sc.turn_complete:
                             print(f"[JARVIS] ✅ Turn #{_turn_n} complete ({_msg_n} messages)")
@@ -1157,7 +1991,13 @@ class JarvisLive:
                             if in_buf:
                                 full_in = " ".join(in_buf).strip()
                                 if full_in:
+                                    full_in = self._sanitize_multilingual_transcript(full_in)
+                                if full_in:
+                                    if self._should_arm_command_window(full_in):
+                                        self._arm_command_window(full_in)
                                     self.ui.write_log(f"You: {full_in}")
+                                    if self._resolve_pending_choice(full_in):
+                                        out_buf = []
 
                             in_buf = []
 
@@ -1191,6 +2031,7 @@ class JarvisLive:
 
         except Exception as e:
             if "429" not in str(e):
+                self._trace(TelemetryEvents.RECEIVE_ERROR, str(e))
                 print(f"[JARVIS] ❌ Recv error: {e}")
                 traceback.print_exc()
             raise
@@ -1254,7 +2095,7 @@ class JarvisLive:
         print("[JARVIS] 🔊 Play started")
         if getattr(self, "sync_audio_out_queue", None) is None:
             import queue
-            self.sync_audio_out_queue = queue.Queue(maxsize=300)
+            self.sync_audio_out_queue = queue.Queue(maxsize=MAX_PLAY_QUEUE)
             t = threading.Thread(target=self._play_worker, daemon=True)
             t.start()
 
@@ -1292,11 +2133,12 @@ class JarvisLive:
                 ):
                     self.session        = session
                     self._loop          = asyncio.get_event_loop() 
-                    self.audio_in_queue = asyncio.Queue(maxsize=200)
-                    self.out_queue      = asyncio.Queue(maxsize=100)
+                    self.audio_in_queue = asyncio.Queue(maxsize=MAX_AUDIO_IN_QUEUE)
+                    self.out_queue      = asyncio.Queue(maxsize=MAX_AUDIO_OUT_QUEUE)
 
                     print("[JARVIS] \u2705 Connected.")
                     self.ui.write_log("Kree online.")
+                    self._trace(TelemetryEvents.CONNECTION_OPEN, "Realtime connection opened")
                     
                     if not self._welcomed:
                         self._welcomed = True
@@ -1309,10 +2151,12 @@ class JarvisLive:
                     tg.create_task(self._play_audio())
 
             except Exception as e:
+                self._trace(TelemetryEvents.CONNECTION_ERROR, str(e))
                 print(f"[JARVIS] ⚠️  Error: {e}")
                 traceback.print_exc()
 
             print("[JARVIS] 🔄 Reconnecting in 3s...")
+            self._trace(TelemetryEvents.RECONNECT_WAIT, "Reconnecting in 3s")
             await asyncio.sleep(3)
 
 def main():
@@ -1320,6 +2164,7 @@ def main():
 
     def runner():
         ui.wait_for_api_key()
+        ui.wait_for_unlock()
 
         kree = JarvisLive(ui)
         try:

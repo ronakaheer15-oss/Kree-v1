@@ -235,6 +235,15 @@ LOCK_SCREEN_JS = """
     }
     
     const statusText = lockDiv.querySelector('#pin-status-text');
+
+    function completeUnlock() {
+        if (window.pywebview && window.pywebview.api && window.pywebview.api.on_pin_unlocked) {
+            window.pywebview.api.on_pin_unlocked();
+        }
+        lockDiv.style.transition = "opacity 0.4s ease-out";
+        lockDiv.style.opacity = "0";
+        setTimeout(() => lockDiv.remove(), 400);
+    }
     
     let isSetupMode = false;
     let setupStep = 1;
@@ -257,8 +266,7 @@ LOCK_SCREEN_JS = """
             if (!isSetupMode && window.pywebview && window.pywebview.api) {
                 window.pywebview.api.trigger_biometrics().then(res => {
                     if(res) {
-                        lockDiv.style.opacity = '0';
-                        setTimeout(()=>lockDiv.remove(), 400);
+                        completeUnlock();
                     }
                 });
             }
@@ -284,8 +292,7 @@ LOCK_SCREEN_JS = """
                     } else {
                         if (pinInput === firstPin) {
                             window.pywebview.api.setup_master_pin(pinInput).then(() => {
-                                lockDiv.style.opacity = '0';
-                                setTimeout(()=>lockDiv.remove(), 400);
+                                completeUnlock();
                             });
                         } else {
                             if(statusText) {
@@ -308,9 +315,7 @@ LOCK_SCREEN_JS = """
                     // Login Mode
                     window.pywebview.api.verify_master_pin(pinInput).then(isValid => {
                         if(isValid) {
-                            lockDiv.style.transition = "opacity 0.4s ease-out";
-                            lockDiv.style.opacity = "0";
-                            setTimeout(() => lockDiv.remove(), 400);
+                            completeUnlock();
                         } else {
                             if(statusText) {
                                 statusText.textContent = "INVALID PIN";

@@ -5,6 +5,8 @@ import time
 import subprocess
 import platform
 import shutil
+import webbrowser
+from pathlib import Path
 
 try:
     import psutil # type: ignore[import]
@@ -13,6 +15,10 @@ except ImportError:
     _PSUTIL = False
 
 _APP_ALIASES = {
+    "chatgpt":            {"Windows": "ChatGPT.exe",            "Darwin": "ChatGPT",             "Linux": "chatgpt"},
+    "codex":              {"Windows": "ChatGPT.exe",            "Darwin": "ChatGPT",             "Linux": "chatgpt"},
+    "github":             {"Windows": "GitHubDesktop.exe",      "Darwin": "GitHub Desktop",      "Linux": "github-desktop"},
+    "github desktop":     {"Windows": "GitHubDesktop.exe",      "Darwin": "GitHub Desktop",      "Linux": "github-desktop"},
     "whatsapp":           {"Windows": "WhatsApp",               "Darwin": "WhatsApp",            "Linux": "whatsapp"},
     "chrome":             {"Windows": "chrome",                 "Darwin": "Google Chrome",       "Linux": "google-chrome"},
     "google chrome":      {"Windows": "chrome",                 "Darwin": "Google Chrome",       "Linux": "google-chrome"},
@@ -92,9 +98,65 @@ _WIN_URI_MAP = {
     "clock": "ms-clock:",
 }
 
+_WEB_FALLBACK_URLS = {
+    "codex": "https://chatgpt.com/?model=gpt-5-codex",
+    "chatgpt": "https://chatgpt.com",
+    "openai": "https://chatgpt.com",
+    "github": "https://github.com",
+    "github desktop": "https://github.com",
+    "youtube": "https://www.youtube.com",
+}
+
+
+def _open_web_fallback(app_name: str) -> bool:
+    url = _WEB_FALLBACK_URLS.get(app_name.lower().strip())
+    if not url:
+        return False
+    try:
+        webbrowser.open_new_tab(url)
+        return True
+    except Exception:
+        return False
+
 def _launch_windows(app_name: str) -> bool:
     import os
     app_lower = app_name.lower().strip()
+    create_flags = 0
+    if hasattr(subprocess, "CREATE_NO_WINDOW"):
+        create_flags = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
+
+    def _resolve_known_exe(name: str) -> str | None:
+        exe = name.strip()
+        if not exe.lower().endswith('.exe'):
+            return None
+        if Path(exe).is_absolute() and Path(exe).exists():
+            return exe
+
+        local = os.environ.get('LOCALAPPDATA', '')
+        if not local:
+            return None
+        programs = Path(local) / 'Programs'
+        if not programs.exists():
+            return None
+
+        # Fast known vendor folders first
+        fast_candidates = [
+            programs / 'ChatGPT' / exe,
+            programs / 'GitHub Desktop' / exe,
+            programs / 'GitHubDesktop' / exe,
+        ]
+        for p in fast_candidates:
+            if p.exists():
+                return str(p)
+
+        # Fallback search within Programs tree
+        try:
+            for p in programs.rglob(exe):
+                if p.is_file():
+                    return str(p)
+        except Exception:
+            pass
+        return None
     
     # Fast-Path: UWP URIs
     if app_lower in _WIN_URI_MAP:
@@ -106,26 +168,44 @@ def _launch_windows(app_name: str) -> bool:
 
     # Fast-Path: Known executables that exist in PATH
     try:
+        resolved = _resolve_known_exe(app_name)
+        if resolved:
+            try:
+                subprocess.Popen([resolved], creationflags=create_flags) # type: ignore[arg-type]
+                return True
+            except Exception:
+                pass
+
         # If it has .exe, run it directly. If not, Windows is smart enough to find it via startfile if mapped in App Paths
         target = app_name if app_name.endswith(".exe") else f"{app_name}.exe"
-        
-        # Try direct startfile
-        try:
-            os.startfile(app_name) # type: ignore
-            return True
-        except FileNotFoundError:
-            pass
-            
-        try:
-            os.startfile(target) # type: ignore
-            return True
-        except FileNotFoundError:
-            pass
 
-        # Fallback to subprocess shell 'start'
-        result = subprocess.run(f'start "" "{app_name}"', shell=True, capture_output=True)
-        if result.returncode == 0:
-            return True
+        resolved_target = _resolve_known_exe(target)
+        if resolved_target:
+            try:
+                subprocess.Popen([resolved_target], creationflags=create_flags) # type: ignore[arg-type]
+                return True
+            except Exception:
+                pass
+
+        # If available in PATH, launch directly without shell popups.
+        in_path = shutil.which(app_name) or shutil.which(target)
+        if in_path:
+            try:
+                subprocess.Popen([in_path], creationflags=create_flags) # type: ignore[arg-type]
+                return True
+            except Exception:
+                pass
+
+        # Final fallback: let Windows resolve the registered application path.
+        for candidate in (app_name, target):
+            try:
+                os.startfile(candidate)  # type: ignore[attr-defined]
+                return True
+            except Exception:
+                continue
+        
+        # Avoid unresolved startfile/shell start popups; fail gracefully instead.
+        return False
             
     except Exception as e:
         print(f"[open_app] ⚠️ Windows execution failed: {e}")
@@ -136,7 +216,6 @@ def _launch_macos(app_name: str) -> bool:
     try:
         result = subprocess.run(["open", "-a", app_name], capture_output=True, timeout=8)
         if result.returncode == 0:
-            time.sleep(1.0)
             return True
     except Exception:
         pass
@@ -144,7 +223,6 @@ def _launch_macos(app_name: str) -> bool:
     try:
         result = subprocess.run(["open", "-a", f"{app_name}.app"], capture_output=True, timeout=8)
         if result.returncode == 0:
-            time.sleep(1.0)
             return True
     except Exception:
         pass
@@ -173,7 +251,6 @@ def _launch_linux(app_name: str) -> bool:
     if binary:
         try:
             subprocess.Popen([binary], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            time.sleep(1.0)
             return True
         except Exception:
             pass
@@ -234,6 +311,9 @@ def open_app(
             success = launcher(app_name)
             if success:
                 return f"Opened {app_name} successfully, sir."
+
+        if _open_web_fallback(app_name) or _open_web_fallback(normalized):
+            return f"Opened {app_name} in your browser, sir."
 
         return (
             f"I tried to open {app_name}, sir, but couldn't confirm it launched. "
