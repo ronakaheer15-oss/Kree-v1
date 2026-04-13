@@ -1134,7 +1134,7 @@ class JarvisLive:
         self._wakeword_detector = None                   # Set by runner() on boot
 
         # Register text callback immediately so UI can send commands from the start
-        self.ui.on_user_text = self._on_user_text
+        self.ui.on_user_text = self.on_user_text
         
         self._trigger_engine = TriggerEngine(self._on_trigger_fired)
         self._trigger_engine.start()
@@ -1146,7 +1146,7 @@ class JarvisLive:
             self._arm_command_window(payload)
             if bypass_voice:
                 self.ui.write_log(f"System Trigger: {payload}")
-                self._on_user_text(payload)
+                self.on_user_text(payload)
             else:
                 if self.session and self._loop:
                     async def _send():
@@ -1163,7 +1163,7 @@ class JarvisLive:
         self._telemetry.set_context(component="main", model=LIVE_MODEL)
         self._trace(TelemetryEvents.SESSION_INIT, "Kree runtime initialized")
 
-        self.ui.on_user_text = self._on_user_text
+        self.ui.on_user_text = self.on_user_text
 
     def _trace(self, event_type: str, message: str = "", **fields: Any) -> None:
         telemetry = getattr(self, "_telemetry", None)
@@ -2952,9 +2952,9 @@ class JarvisLive:
             if len(_mobile_cmd_dedup) > 50:
                 _mobile_cmd_dedup.clear()
             print(f"[JARVIS] 📱 Mobile Command: {text}")
-            if hasattr(self, '_on_user_text'):
+            if hasattr(self, 'on_user_text'):
                 try:
-                    self._on_user_text(text)
+                    self.on_user_text(text)
                 except Exception as e:
                     print(f"[JARVIS] ⚠️ Mobile command error: {e}")
 
@@ -3389,7 +3389,16 @@ def main():
                 
                 if result == 6:  # IDYES
                     try:
-                        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsof        # 1. Boot System Tray
+                        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_SET_VALUE)
+                        winreg.SetValueEx(key, "Kree AI", 0, winreg.REG_SZ, f'"{sys.executable}" --background')
+                        winreg.CloseKey(key)
+                        settings['auto_start_configured'] = True
+                    except Exception as e:
+                        print(f"Failed setting startup reg: {e}")
+                else:
+                    settings['auto_start_configured'] = False
+                save_audio_settings(settings)
+        except Exception: pass
         try:
             from core.tray import SystemTrayApp
             
