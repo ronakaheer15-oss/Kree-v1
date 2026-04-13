@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Kree — Dark Mode</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+    <link href="https://fonts.googleapis.com" rel="preconnect" />
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet" />
+    <script>
+        window.tailwind = window.tailwind || {};
+        window.tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#00DC82',
+                        secondary: '#a855f7',
+                        accent: '#fbbf24',
+                    },
+                    fontFamily: {
+                        display: ["'Rajdhani'", "sans-serif"],
+                        mono: ["'JetBrains Mono'", "monospace"],
+                    }
+                }
+            }
+        };
+    </script>
+    <style>
+        ::-webkit-scrollbar {
+            width: 4px
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #3f3f46;
+            border-radius: 2px
+        }
+
+        body {
+            background: #09090b;
+            color: #e4e4e7;
+            font-family: 'Rajdhani', sans-serif;
+            overflow: hidden;
+        }
+
+        * {
+            box-sizing: border-box
+        }
+
+        @keyframes float {
+
+            0%,
+            100% {
+                transform: translateY(0) rotate(0deg)
+            }
+
+            50% {
+                transform: translateY(-12px) rotate(2deg)
+            }
+        }
+
+        @keyframes pulseGlow {
+            0%,
+            100% {
+                opacity: 0.6;
+                transform: scale(0.95);
+            }
+            50% {
+                opacity: 1;
+                transform: scale(1.05);
+            }
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg)
+            }
+        }
+
+        @keyframes spinR {
+            to {
+                transform: rotate(-360deg)
+            }
+        }
+
+        @keyframes blink {
+
+            0%,
+            100% {
+                opacity: 1
+            }
+
+            50% {
+                opacity: .3
+            }
+        }
+
+        @keyframes shimmer {
+            0% {
+                opacity: .5
+            }
+
+            50% {
+                opacity: 1
+            }
+
+            100% {
+                opacity: .5
+            }
+        }
+
+        .orb-container {
+            animation: float 6s ease-in-out infinite
+        }
+
+        .orb-glow {
+            animation: pulseGlow 3s ease-in-out infinite
+        }
+
+        .ring1 {
+            animation: spin 10s linear infinite
+        }
+
+        .ring2 {
+            animation: spinR 15s linear infinite
+        }
+
+        .blink {
+            animation: blink 1.4s ease-in-out infinite
+        }
+
+        .shimmer {
+            animation: shimmer 2s ease-in-out infinite
+        }
+    </style>
+</head>
+
+<body class="h-screen flex flex-col select-none">
+
+    <!-- ── HEADER ──────────────────────────────────────────────────────────── -->
+    <header
+        class="h-14 flex items-center justify-between px-5 border-b border-white/5 bg-black/60 backdrop-blur-md shrink-0 z-10"
+        style="-webkit-app-region:drag">
+        <div class="flex items-center space-x-2" style="-webkit-app-region:no-drag">
+            <div class="w-3 h-3 rounded-full bg-red-500 hover:bg-red-400 cursor-pointer transition group relative"
+                title="Close">
+                <span
+                    class="absolute inset-0 rounded-full bg-red-300 opacity-0 group-hover:opacity-40 transition"></span>
+            </div>
+            <div class="w-3 h-3 rounded-full bg-yellow-500 hover:bg-yellow-400 cursor-pointer transition group relative"
+                title="Minimise">
+                <span
+                    class="absolute inset-0 rounded-full bg-yellow-300 opacity-0 group-hover:opacity-40 transition"></span>
+            </div>
+            <div class="w-3 h-3 rounded-full bg-green-500 hover:bg-green-400 cursor-pointer transition group relative"
+                title="Switch theme">
+                <span
+                    class="absolute inset-0 rounded-full bg-green-300 opacity-0 group-hover:opacity-40 transition"></span>
+            </div>
+        </div>
+
+        <nav class="flex space-x-1 bg-white/5 p-1 rounded-xl" style="-webkit-app-region:no-drag">
+            <button
+                id="nav-dashboard"
+                onclick="switchPage('dashboard')"
+                class="bg-primary text-black px-4 py-1 rounded-lg text-sm font-bold tracking-wide shadow-[0_0_12px_rgba(0,220,130,.4)]">DASHBOARD</button>
+            <button
+                id="nav-contacts"
+                onclick="switchPage('contacts')"
+                class="px-4 py-1 rounded-lg text-sm font-medium text-zinc-500 hover:text-white hover:bg-white/5 transition">CONTACTS</button>
+            <button
+                id="nav-notes"
+                onclick="switchPage('notes')"
+                class="px-4 py-1 rounded-lg text-sm font-medium text-zinc-500 hover:text-white hover:bg-white/5 transition">NOTES</button>
+            <button
+                id="nav-connect"
+                onclick="switchPage('connect')"
+                class="px-4 py-1 rounded-lg text-sm font-medium text-zinc-500 hover:text-white hover:bg-white/5 transition">CONNECT</button>
+            <button
+                id="nav-phone"
+                onclick="switchPage('phone')"
+                class="px-4 py-1 rounded-lg text-sm font-medium text-zinc-500 hover:text-white hover:bg-white/5 transition">MOBILE CTL</button>
+            <button
+                id="nav-files"
+                onclick="switchPage('files')"
+                class="px-4 py-1 rounded-lg text-sm font-medium text-zinc-500 hover:text-white hover:bg-white/5 transition">FILE BRIDGE</button>
+        </nav>
+
+        <div class="flex items-center space-x-4 text-[11px] font-mono text-zinc-500" style="-webkit-app-region:no-drag">
+            <span class="flex items-center gap-1.5 blink">
+                <span class="w-2 h-2 rounded-full bg-primary inline-block"></span> SYSTEM READY
+            </span>
+            <span>NET: <span class="text-primary font-bold">ONLINE</span></span>
+        </div>
+        <button class="p-2 rounded-xl hover:bg-white/5 transition" style="-webkit-app-region:no-drag">
+            <span class="material-icons-outlined text-zinc-500 hover:text-white transition text-lg">brightness_6</span>
+        </button>
+    </header>
+
+    <!-- ── MAIN GRID ─────────────────────────────────────────────────────────── -->
+    <main id="page-dashboard" class="flex-1 p-3 grid grid-cols-12 gap-3 min-h-0 overflow-hidden">
+
+        <!-- LEFT COLUMN -->
+        <div class="col-span-3 flex flex-col gap-3 overflow-y-auto pr-0.5">
+
+            <!-- Visual Input / Webcam -->
+            <div class="bg-zinc-950 rounded-xl border border-white/5 p-3 flex flex-col h-60 relative group">
+                <div class="flex items-center justify-between mb-2">
+                    <span
+                        class="text-[10px] font-bold tracking-widest text-zinc-500 uppercase flex items-center gap-1.5">
+                        <span class="material-icons-outlined text-sm text-primary">visibility</span> Visual Input
+                    </span>
+                    <span class="w-2 h-2 rounded-full bg-red-500 blink"></span>
+                </div>
+                <div class="flex-1 rounded-lg overflow-hidden relative bg-black border border-white/5">
+                    <video id="kree-webcam" autoplay muted playsinline
+                        class="w-full h-full object-cover opacity-90"></video>
+                    <div id="kree-cam-offline"
+                        class="absolute inset-0 flex flex-col items-center justify-center text-zinc-700 gap-2">
+                        <span class="material-icons-outlined text-4xl">videocam_off</span>
+                        <span class="text-[10px] font-mono uppercase tracking-widest">Video Feed Offline</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Metrics -->
+            <div class="bg-zinc-950 rounded-xl border border-white/5 p-4">
+                <div class="flex items-center justify-between mb-4">
+                    <span
+                        class="text-[10px] font-bold tracking-widest text-zinc-500 uppercase flex items-center gap-1.5">
+                        <span class="material-icons-outlined text-sm text-secondary">memory</span> System Metrics
+                    </span>
+                    <span
+                        class="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded border border-primary/20 font-mono font-bold tracking-widest">ONLINE</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2.5">
+                    <!-- CPU -->
+                    <div class="bg-black/40 rounded-lg p-3 border border-white/5 relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-0.5 h-full bg-primary opacity-60"></div>
+                        <div class="flex justify-between items-end mb-1">
+                            <span class="material-icons-outlined text-primary text-base">developer_board</span>
+                            <span class="text-xl font-bold text-white font-mono">
+                                <span id="kree-cpu-val">--</span><span
+                                    class="text-xs text-zinc-500 font-normal">%</span>
+                            </span>
+                        </div>
+                        <div class="text-[9px] text-zinc-600 font-mono uppercase tracking-wider mb-2">CPU Load</div>
+                        <div class="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                            <div id="kree-cpu-bar" class="h-full bg-primary rounded-full transition-all duration-700"
+                                style="width:0%"></div>
+                        </div>
+                    </div>
+                    <!-- RAM -->
+                    <div class="bg-black/40 rounded-lg p-3 border border-white/5 relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-0.5 h-full bg-secondary opacity-60"></div>
+                        <div class="flex justify-between items-end mb-1">
+                            <span class="material-icons-outlined text-secondary text-base">dns</span>
+                            <span class="text-xl font-bold text-white font-mono">
+                                <span id="kree-ram-val">--</span><span
+                                    class="text-xs text-zinc-500 font-normal">%</span>
+                            </span>
+                        </div>
+                        <div class="text-[9px] text-zinc-600 font-mono uppercase tracking-wider mb-2">RAM Usage</div>
+                        <div class="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                            <div id="kree-ram-bar" class="h-full bg-secondary rounded-full transition-all duration-700"
+                                style="width:0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top Processes -->
+            <div class="bg-zinc-950 rounded-xl border border-white/5 p-4 flex-1">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="material-icons-outlined text-sm text-zinc-600">settings_applications</span>
+                    <span class="text-[10px] font-bold tracking-widest text-zinc-500 uppercase">Top Processes</span>
+                </div>
+                <table class="w-full text-left text-xs font-mono">
+                    <thead>
+                        <tr class="text-zinc-600 border-b border-white/5">
+                            <th class="pb-2 font-normal text-[10px] uppercase tracking-wider">App Name</th>
+                            <th class="pb-2 font-normal text-[10px] text-right uppercase tracking-wider">CPU</th>
+                            <th class="pb-2 font-normal text-[10px] text-right uppercase tracking-wider">Mem</th>
+                        </tr>
+                    </thead>
+                    <tbody id="kree-procs-body" class="divide-y divide-white/[0.03]">
+                        <tr>
+                            <td colspan="3" class="py-4 text-center text-zinc-700 text-[10px]">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- CENTER: Core -->
+        <div
+            class="col-span-6 flex flex-col h-full bg-zinc-950 rounded-xl border border-white/5 relative overflow-hidden">
+            <!-- Grid background -->
+            <div class="absolute inset-0 z-0 opacity-[.04] pointer-events-none"
+                style="background-image:radial-gradient(circle at 1px 1px,#fff 1px,transparent 0);background-size:28px 28px;">
+            </div>
+
+            <!-- Core label -->
+            <div class="absolute top-5 left-5 z-10">
+                <div class="flex items-center gap-2 text-primary">
+                    <span class="material-icons-outlined text-sm">hub</span>
+                    <span class="text-[10px] font-bold tracking-[.22em] uppercase shimmer">Core System</span>
+                </div>
+                <div class="text-[9px] text-zinc-700 font-mono mt-0.5 tracking-widest">v1.0.0 Stable</div>
+            </div>
+
+            <!-- Orb -->
+            <div class="flex-1 flex items-center justify-center relative z-0">
+                <div class="orb-container relative flex items-center justify-center">
+                    <!-- Glow -->
+                    <div class="absolute w-56 h-56 bg-[radial-gradient(ellipse_at_center,rgba(251,191,36,0.25)_0%,transparent_70%)] rounded-full orb-glow pointer-events-none">
+                    </div>
+                    <!-- Orb image -->
+                    <div class="w-44 h-44 rounded-full relative z-10 overflow-hidden border border-accent/25 bg-black"
+                        style="box-shadow:0 0 40px rgba(251,191,36,.2),inset 0 0 30px rgba(0,0,0,.8)">
+                        <img alt="AI core"
+                            class="w-full h-full object-cover opacity-85 hover:scale-105 transition duration-[8s] mix-blend-screen"
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuCPOeVZDBXgQvEFI4S6rE6t8oYwBAWPDJK1NQMgLZTNPM89DJ64ORQ3nSezB-K9HOtSndUx_y37db0n8VtbQogI31XP1OomYjA7FMiN_M3X2ANuXSX5vTI5z5XxU8fZDtxHJGob3oaCUNGctBxidx2al0me9lDGggbVjQ0PU2BaqziGXAiqSt5UZI8gK7lRAMFWbKKUfvIIY9IahH7tt8Yl_-Ymfrytj44QR0yNRnwy6WtueEEdBMNQKXVT2Fv_o2vq6hiuEpPcWA" />
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent">
+                        </div>
+                    </div>
+                    <!-- Rings -->
+                    <div
+                        class="ring1 absolute w-64 h-64 rounded-full border border-dashed border-accent/15 pointer-events-none">
+                    </div>
+                    <div
+                        class="ring2 absolute w-80 h-80 rounded-full border border-dotted border-primary/10 pointer-events-none">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Control bar -->
+            <div class="p-5 relative z-10 flex justify-center">
+                <div
+                    class="bg-black/60 backdrop-blur-xl border border-white/8 rounded-2xl p-2 flex items-center gap-3 shadow-2xl">
+                    <button
+                        class="w-10 h-10 rounded-xl flex items-center justify-center text-zinc-500 hover:text-white hover:bg-white/8 transition">
+                        <span class="material-icons-outlined">mic_off</span>
+                    </button>
+                    <button id="kree-mic-btn"
+                        class="bg-primary hover:bg-emerald-300 text-black px-8 py-2.5 rounded-xl font-bold tracking-widest flex items-center gap-2 transition"
+                        style="box-shadow:0 0 20px rgba(0,220,130,.35)">
+                        <span class="material-icons-outlined">mic</span> LISTEN
+                    </button>
+                    <button
+                        class="w-10 h-10 rounded-xl flex items-center justify-center text-zinc-500 hover:text-white hover:bg-white/8 transition">
+                        <span class="material-icons-outlined">videocam_off</span>
+                    </button>
+                    <div class="w-px h-6 bg-white/8"></div>
+                    <button
+                        class="w-10 h-10 rounded-xl flex items-center justify-center text-zinc-500 hover:text-white hover:bg-white/8 transition">
+                        <span class="material-icons-outlined">settings</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT: Transcript -->
+        <div class="col-span-3 flex flex-col h-full bg-zinc-950 rounded-xl border border-white/5 overflow-hidden">
+            <div class="p-4 border-b border-white/5 flex justify-between items-center shrink-0">
+                <span class="text-[10px] font-bold tracking-widest text-zinc-500 uppercase flex items-center gap-1.5">
+                    <span class="material-icons-outlined text-sm">segment</span> Transcript
+                </span>
+                <span
+                    class="material-icons-outlined text-zinc-700 text-sm cursor-pointer hover:text-primary transition">download</span>
+            </div>
+
+            <!-- Transcript messages — empty by default (backend fills it) -->
+            <div id="kree-transcript" class="flex-1 overflow-y-auto p-4 space-y-1">
+                <!-- Messages injected by appendTranscript() -->
+                <div class="flex items-center justify-center h-full">
+                    <p class="text-[10px] text-zinc-700 font-mono uppercase tracking-widest text-center">
+                        Awaiting conversation...
+                    </p>
+                </div>
+            </div>
+
+            <!-- Input -->
+            <div class="p-2.5 bg-black/30 border-t border-white/5 flex gap-2 shrink-0">
+                <input id="kree-input" type="text"
+                    class="bg-transparent border-none text-sm text-zinc-300 placeholder-zinc-700 focus:ring-0 w-full font-mono outline-none"
+                    placeholder="Type a command..." />
+                <button class="text-primary hover:text-emerald-300 transition shrink-0">
+                    <span class="material-icons-outlined">send</span>
+                </button>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- NEW MOBILE TABS -->
+    <main id="page-contacts" class="hidden flex-1 p-6 flex-col h-full bg-zinc-950/80 m-3 rounded-xl border border-white/5">
+        <div class="flex items-center justify-between mb-4 border-b border-white/5 pb-2">
+            <div class="flex items-center gap-3 opacity-50">
+                <span class="material-icons-outlined text-primary">contacts</span>
+                <span class="tracking-widest uppercase text-sm font-bold text-white">Contact Protocols</span>
+            </div>
+            <div id="contacts-sync-status" class="text-xs text-primary/50 font-mono">WAITING FOR BRIDGE...</div>
+        </div>
+        <div id="contact-list" class="flex-1 overflow-y-auto space-y-2 mt-2">
+            <div class="text-zinc-600 text-sm mt-8 text-center font-mono">Connect mobile app to sync contacts</div>
+        </div>
+        <script>
+            function renderSyncedContacts(jsonStr) {
+                const list = document.getElementById('contact-list');
+                const status = document.getElementById('contacts-sync-status');
+                try {
+                    const contacts = JSON.parse(jsonStr);
+                    status.innerHTML = `SYNCED [${contacts.length}] • LIVE`;
+                    status.className = "text-xs text-primary font-mono tracking-wider";
+                    list.innerHTML = '';
+                    
+                    if(contacts.length === 0) {
+                        list.innerHTML = '<div class="text-zinc-600 text-sm mt-8 text-center font-mono">Phone contacts empty.</div>';
+                        return;
+                    }
+                    
+                    contacts.forEach(c => {
+                        const phoneStr = c.phone ? c.phone.replace(/"/g, '&quot;') : '';
+                        list.innerHTML += `<div class="p-3 bg-black/40 border border-white/5 rounded-lg flex justify-between items-center group">
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-sm">
+                                    ${c.name ? c.name[0].toUpperCase() : '?'}
+                                </div>
+                                <div>
+                                    <div class="text-zinc-200 font-bold text-sm">${c.name || 'Unknown'}</div>
+                                    <div class="text-zinc-500 text-xs font-mono">${c.phone || 'No number'}</div>
+                                </div>
+                            </div>
+                            <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition">
+                                <button onclick="pywebview.api.send_mobile_intent('call', '${phoneStr}', '')" class="w-8 h-8 rounded-full border border-white/10 hover:border-primary hover:bg-primary/10 text-zinc-500 hover:text-primary transition flex items-center justify-center" title="Call on phone">
+                                    <span class="material-icons-outlined text-[16px]">call</span>
+                                </button>
+                                <button onclick="pywebview.api.send_mobile_intent('sms', '${phoneStr}', '')" class="w-8 h-8 rounded-full border border-white/10 hover:border-primary hover:bg-primary/10 text-zinc-500 hover:text-primary transition flex items-center justify-center" title="Text on phone">
+                                    <span class="material-icons-outlined text-[16px]">chat</span>
+                                </button>
+                            </div>
+                        </div>`;
+                    });
+                } catch(e) {
+                    console.error("Failed to render sync contacts:", e);
+                }
+            }
+        </script>
+    </main>
+    
+    <main id="page-notes" class="hidden flex-1 p-6 flex-col h-full bg-zinc-950/80 m-3 rounded-xl border border-white/5">
+        <div class="flex items-center justify-between mb-4 border-b border-white/5 pb-2">
+            <div class="flex items-center gap-3 opacity-50">
+                <span class="material-icons-outlined text-primary">description</span>
+                <span class="tracking-widest uppercase text-sm font-bold text-white">Secure Notes</span>
+            </div>
+            <div id="notes-sync-status" class="text-xs text-primary/50 font-mono">WAITING FOR BRIDGE...</div>
+        </div>
+        <div id="kree-global-notes" class="flex-1 overflow-y-auto space-y-3 mt-2 pr-2">
+            <div class="text-zinc-600 text-sm mt-8 text-center font-mono">Connect mobile app to sync notes</div>
+        </div>
+        <script>
+            function renderSyncedNotes(jsonStr) {
+                const list = document.getElementById('kree-global-notes');
+                const status = document.getElementById('notes-sync-status');
+                try {
+                    const notes = JSON.parse(jsonStr);
+                    status.innerHTML = `SYNCED [${notes.length}] • LIVE`;
+                    status.className = "text-xs text-primary font-mono tracking-wider";
+                    list.innerHTML = '';
+                    
+                    if(notes.length === 0) {
+                        list.innerHTML = '<div class="text-zinc-600 text-sm mt-8 text-center font-mono">Phone notes empty.</div>';
+                        return;
+                    }
+                    
+                    notes.forEach(n => {
+                        const dateStr = new Date(n.updatedAt || n.createdAt || Date.now()).toLocaleString();
+                        list.innerHTML += `<div class="p-4 bg-black/40 border border-white/5 rounded-xl">
+                            <div class="text-white font-bold text-sm mb-2 tracking-wide">${n.title || 'Untitled'}</div>
+                            <div class="text-zinc-400 text-sm font-mono whitespace-pre-wrap">${escapeHtml(n.body || '')}</div>
+                            <div class="text-[10px] text-zinc-600 mt-3 uppercase tracking-wider">${dateStr}</div>
+                        </div>`;
+                    });
+                } catch(e) {
+                    console.error("Failed to render sync notes:", e);
+                }
+            }
+            
+            function escapeHtml(unsafe) {
+                return unsafe
+                     .replace(/&/g, "&amp;")
+                     .replace(/</g, "&lt;")
+                     .replace(/>/g, "&gt;")
+                     .replace(/"/g, "&quot;")
+                     .replace(/'/g, "&#039;");
+            }
+        </script>
+    </main>
+    <main id="page-connect" class="hidden flex-1 p-6 text-center text-zinc-500 font-mono flex flex-col items-center justify-center h-full bg-zinc-950/80 m-3 rounded-xl border border-white/5">
+        <div class="w-48 h-48 border border-primary/20 bg-black/60 rounded-xl mb-6 shadow-[0_0_30px_rgba(0,220,130,.15)] flex flex-col items-center justify-center overflow-hidden">
+             <img id="kree-connect-qr" src="" class="w-full h-full object-cover mix-blend-screen opacity-90" alt="Connect QR" style="display:none;" />
+             <span id="kree-connect-qr-loading" class="material-icons-outlined text-[60px] text-primary/30 animate-pulse">qr_code_scanner</span>
+        </div>
+        <div id="kree-connect-label" class="tracking-widest uppercase text-sm font-bold text-white mb-2">GENERATING QR CODE...</div>
+        <div id="kree-connect-url" class="text-[10px] uppercase text-zinc-600">Detecting network...</div>
+        <script>
+        (function(){
+            function loadQR(){
+                try {
+                    if(window.pywebview && window.pywebview.api && window.pywebview.api.get_pwa_url){
+                        window.pywebview.api.get_pwa_url().then(function(url){
+                            if(url){
+                                var qrImg = document.getElementById('kree-connect-qr');
+                                var loader = document.getElementById('kree-connect-qr-loading');
+                                var label = document.getElementById('kree-connect-label');
+                                var urlLabel = document.getElementById('kree-connect-url');
+                                qrImg.src = 'https://api.qrserver.com/v1/create-qr-code/?size=170x170&data=' + encodeURIComponent(url) + '&color=00DC82&bgcolor=000000';
+                                qrImg.style.display = 'block';
+                                if(loader) loader.style.display = 'none';
+                                if(label) label.textContent = 'SCAN WITH PHONE CAMERA';
+                                if(urlLabel) urlLabel.textContent = url;
+                            }
+                        });
+                    } else {
+                        setTimeout(loadQR, 1000);
+                    }
+                } catch(e){ setTimeout(loadQR, 2000); }
+            }
+            setTimeout(loadQR, 1500);
+        })();
+        </script>
+    </main>
+    <main id="page-phone" class="hidden flex-1 p-4 flex-col h-full bg-zinc-950/80 m-3 rounded-xl border border-white/5 overflow-hidden">
+        <div class="flex items-center justify-between mb-3 border-b border-white/5 pb-2">
+            <div class="flex items-center gap-3">
+                <span class="material-icons-outlined text-primary">phone_iphone</span>
+                <span class="tracking-widest uppercase text-sm font-bold text-white">MOBILE CONTROL</span>
+            </div>
+            <div id="phone-bridge-status" class="text-[10px] tracking-widest uppercase text-zinc-600 font-bold">BRIDGE OFFLINE</div>
+        </div>
+        <div class="flex gap-4 flex-1 overflow-hidden" style="min-height:0;">
+            <div class="flex-1 flex flex-col gap-4 min-w-0">
+                <div class="bg-black/40 border border-white/5 rounded-xl p-4">
+                    <div class="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-2">Remote Dialer</div>
+                    <input id="desktop-dialer-input" type="tel" placeholder="Enter number..." class="w-full bg-black/60 border border-white/5 rounded-lg px-4 py-3 text-white text-lg font-mono text-center outline-none focus:border-primary/30 tracking-widest mb-3" />
+                    <div class="grid grid-cols-3 gap-2 max-w-[220px] mx-auto">
+                        <button onclick="dDialNum('1')" class="bg-white/5 hover:bg-primary/10 border border-white/5 rounded-lg py-2 text-white font-bold transition">1</button>
+                        <button onclick="dDialNum('2')" class="bg-white/5 hover:bg-primary/10 border border-white/5 rounded-lg py-2 text-white font-bold transition">2</button>
+                        <button onclick="dDialNum('3')" class="bg-white/5 hover:bg-primary/10 border border-white/5 rounded-lg py-2 text-white font-bold transition">3</button>
+                        <button onclick="dDialNum('4')" class="bg-white/5 hover:bg-primary/10 border border-white/5 rounded-lg py-2 text-white font-bold transition">4</button>
+                        <button onclick="dDialNum('5')" class="bg-white/5 hover:bg-primary/10 border border-white/5 rounded-lg py-2 text-white font-bold transition">5</button>
+                        <button onclick="dDialNum('6')" class="bg-white/5 hover:bg-primary/10 border border-white/5 rounded-lg py-2 text-white font-bold transition">6</button>
+                        <button onclick="dDialNum('7')" class="bg-white/5 hover:bg-primary/10 border border-white/5 rounded-lg py-2 text-white font-bold transition">7</button>
+                        <button onclick="dDialNum('8')" class="bg-white/5 hover:bg-primary/10 border border-white/5 rounded-lg py-2 text-white font-bold transition">8</button>
+                        <button onclick="dDialNum('9')" class="bg-white/5 hover:bg-primary/10 border border-white/5 rounded-lg py-2 text-white font-bold transition">9</button>
+                        <button onclick="dDialNum('*')" class="bg-white/5 hover:bg-primary/10 border border-white/5 rounded-lg py-2 text-white font-bold transition">*</button>
+                        <button onclick="dDialNum('0')" class="bg-white/5 hover:bg-primary/10 border border-white/5 rounded-lg py-2 text-white font-bold transition">0</button>
+                        <button onclick="dDialNum('#')" class="bg-white/5 hover:bg-primary/10 border border-white/5 rounded-lg py-2 text-white font-bold transition">#</button>
+                    </div>
+                    <div class="flex gap-2 mt-3 max-w-[220px] mx-auto">
+                        <button onclick="dDialCall()" class="flex-1 bg-primary text-black font-bold py-2 rounded-full text-sm hover:brightness-110 transition">CALL</button>
+                        <button onclick="dDialClear()" class="w-12 bg-red-500/20 border border-red-500/30 text-red-400 rounded-full font-bold hover:bg-red-500/30 transition">⌫</button>
+                    </div>
+                </div>
+            </div>
+            <div class="w-[260px] flex flex-col gap-3 min-w-0 overflow-hidden">
+                <div class="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">Quick Launch on Mobile</div>
+                <div class="grid grid-cols-3 gap-2">
+                    <button onclick="launchMobileApp('instagram')" class="bg-black/40 border border-white/5 rounded-lg p-3 flex flex-col items-center gap-1 hover:bg-primary/10 hover:border-primary/20 transition"><span class="text-lg">📷</span><span class="text-[9px] text-zinc-400">Instagram</span></button>
+                    <button onclick="launchMobileApp('whatsapp')" class="bg-black/40 border border-white/5 rounded-lg p-3 flex flex-col items-center gap-1 hover:bg-primary/10 hover:border-primary/20 transition"><span class="text-lg">💬</span><span class="text-[9px] text-zinc-400">WhatsApp</span></button>
+                    <button onclick="launchMobileApp('youtube')" class="bg-black/40 border border-white/5 rounded-lg p-3 flex flex-col items-center gap-1 hover:bg-primary/10 hover:border-primary/20 transition"><span class="text-lg">▶️</span><span class="text-[9px] text-zinc-400">YouTube</span></button>
+                    <button onclick="launchMobileApp('spotify')" class="bg-black/40 border border-white/5 rounded-lg p-3 flex flex-col items-center gap-1 hover:bg-primary/10 hover:border-primary/20 transition"><span class="text-lg">🎵</span><span class="text-[9px] text-zinc-400">Spotify</span></button>
+                    <button onclick="launchMobileApp('twitter')" class="bg-black/40 border border-white/5 rounded-lg p-3 flex flex-col items-center gap-1 hover:bg-primary/10 hover:border-primary/20 transition"><span class="text-lg">🐦</span><span class="text-[9px] text-zinc-400">X/Twitter</span></button>
+                    <button onclick="launchMobileApp('maps')" class="bg-black/40 border border-white/5 rounded-lg p-3 flex flex-col items-center gap-1 hover:bg-primary/10 hover:border-primary/20 transition"><span class="text-lg">🗺️</span><span class="text-[9px] text-zinc-400">Maps</span></button>
+                    <button onclick="launchMobileApp('telegram')" class="bg-black/40 border border-white/5 rounded-lg p-3 flex flex-col items-center gap-1 hover:bg-primary/10 hover:border-primary/20 transition"><span class="text-lg">✈️</span><span class="text-[9px] text-zinc-400">Telegram</span></button>
+                    <button onclick="launchMobileApp('discord')" class="bg-black/40 border border-white/5 rounded-lg p-3 flex flex-col items-center gap-1 hover:bg-primary/10 hover:border-primary/20 transition"><span class="text-lg">🎮</span><span class="text-[9px] text-zinc-400">Discord</span></button>
+                    <button onclick="launchMobileApp('snapchat')" class="bg-black/40 border border-white/5 rounded-lg p-3 flex flex-col items-center gap-1 hover:bg-primary/10 hover:border-primary/20 transition"><span class="text-lg">👻</span><span class="text-[9px] text-zinc-400">Snapchat</span></button>
+                </div>
+                <div class="mt-auto">
+                    <div class="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-2">Send Intent to Phone</div>
+                    <div class="flex gap-2">
+                        <input id="remote-cmd-input" type="text" placeholder="Open app or command..." class="flex-1 bg-black/40 border border-white/5 rounded-lg px-3 py-2 text-zinc-300 text-xs font-mono outline-none focus:border-primary/30 transition" />
+                        <button onclick="sendRemoteCommand()" class="bg-primary/10 border border-primary/30 text-primary rounded-lg px-3 text-xs font-bold hover:bg-primary/20 transition">SEND</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+            function dDialNum(n) { document.getElementById('desktop-dialer-input').value += n; }
+            function dDialClear() { var el = document.getElementById('desktop-dialer-input'); el.value = el.value.slice(0, -1); }
+            function dDialCall() {
+                var num = document.getElementById('desktop-dialer-input').value.trim();
+                if (!num) return;
+                if (window.pywebview && window.pywebview.api && window.pywebview.api.send_mobile_intent) {
+                    window.pywebview.api.send_mobile_intent('call', num);
+                }
+            }
+            function launchMobileApp(name) {
+                if (window.pywebview && window.pywebview.api && window.pywebview.api.send_mobile_command) {
+                    window.pywebview.api.send_mobile_command(name);
+                }
+            }
+            function sendRemoteCommand() {
+                var input = document.getElementById('remote-cmd-input');
+                var cmd = input.value.trim();
+                if (!cmd) return;
+                if (window.pywebview && window.pywebview.api && window.pywebview.api.send_mobile_command) {
+                    window.pywebview.api.send_mobile_command(cmd);
+                }
+                input.value = '';
+            }
+            document.getElementById('remote-cmd-input').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') sendRemoteCommand();
+            });
+        </script>
+    </main>
+
+    <!-- NEW FILE BRIDGE TAB -->
+    <main id="page-files" class="hidden flex-1 p-6 flex-col h-full bg-zinc-950/80 m-3 rounded-xl border border-white/5">
+        <div class="flex items-center justify-between mb-4 border-b border-white/5 pb-2">
+            <div class="flex items-center gap-3 opacity-50">
+                <span class="material-icons-outlined text-primary">folder_sync</span>
+                <span class="tracking-widest uppercase text-sm font-bold text-white">FILE BRIDGE</span>
+            </div>
+            <div class="text-xs text-primary font-mono tracking-wider">● BRIDGE ONLINE</div>
+        </div>
+        
+        <div class="flex-1 grid grid-cols-2 gap-4">
+            <!-- Desktop Sync Folder -->
+            <div class="bg-black/40 border border-white/5 rounded-xl p-4 flex flex-col">
+                <div class="text-zinc-500 text-xs font-mono uppercase tracking-widest mb-3 pb-2 border-b border-white/5 flex items-center justify-between">
+                    <span>Desktop (Kree Bridge)</span>
+                    <button onclick="openDesktopBridgeFolder()" class="text-primary hover:text-emerald-300 transition" title="Open Folder">
+                        <span class="material-icons-outlined text-[16px]">open_in_new</span>
+                    </button>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div class="flex gap-2 mb-4">
+                    <button onclick="sendDesktopFileToMobile()" class="flex-1 bg-white/5 hover:bg-primary/20 border border-white/10 hover:border-primary/50 text-white rounded-lg py-2 text-xs font-bold transition flex items-center justify-center gap-2">
+                        <span class="material-icons-outlined text-[16px] text-primary">upload_file</span> SEND FILE
+                    </button>
+                    <button onclick="sendDesktopFolderToMobile()" class="flex-1 bg-white/5 hover:bg-primary/20 border border-white/10 hover:border-primary/50 text-white rounded-lg py-2 text-xs font-bold transition flex items-center justify-center gap-2">
+                        <span class="material-icons-outlined text-[16px] text-primary">create_new_folder</span> SEND FOLDER (ZIP)
+                    </button>
+                </div>
+
+                <!-- File List Placeholder -->
+                <div id="desktop-files-list" class="flex-1 overflow-y-auto">
+                    <div class="flex flex-col items-center justify-center h-full text-zinc-700">
+                        <span class="material-icons-outlined text-4xl mb-2 opacity-50">laptop_windows</span>
+                        <span class="text-xs font-mono uppercase tracking-widest text-center mt-2 px-4 leading-relaxed">Incoming files from Mobile will save to your Desktop natively</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Phone Sync Status -->
+            <div class="bg-black/40 border border-white/5 rounded-xl p-4 flex flex-col">
+                <div class="text-zinc-500 text-xs font-mono uppercase tracking-widest mb-3 pb-2 border-b border-white/5">
+                    Phone Link
+                </div>
+                <div class="flex flex-col items-center justify-center h-full text-zinc-700">
+                    <span class="material-icons-outlined text-4xl mb-2 opacity-50 text-primary">smartphone</span>
+                    <span class="text-xs font-mono uppercase tracking-widest text-primary/70">Ready to receive via WebSocket</span>
+                    <div class="mt-8 text-[10px] bg-primary/10 border border-primary/20 text-primary px-3 py-1.5 rounded-lg max-w-[80%] text-center leading-relaxed">
+                        Use the File Bridge tab on your phone to beam files directly into the desktop folder.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            function openDesktopBridgeFolder() {
+                if (window.pywebview && window.pywebview.api && window.pywebview.api.open_bridge_folder) {
+                    window.pywebview.api.open_bridge_folder();
+                }
+            }
+            function sendDesktopFileToMobile() {
+                if (window.pywebview && window.pywebview.api && window.pywebview.api.choose_file_to_send) {
+                    window.pywebview.api.choose_file_to_send();
+                }
+            }
+            function sendDesktopFolderToMobile() {
+                if (window.pywebview && window.pywebview.api && window.pywebview.api.choose_folder_to_send) {
+                    window.pywebview.api.choose_folder_to_send();
+                }
+            }
+        </script>
+    </main>
+
+    <script>
+        const pages = ['dashboard', 'contacts', 'notes', 'connect', 'phone', 'files'];
+        function switchPage(target) {
+            pages.forEach(p => {
+                const pageEl = document.getElementById('page-' + p);
+                if (pageEl) {
+                    if (p === target) pageEl.classList.remove('hidden'); else pageEl.classList.add('hidden');
+                }
+                const navEl = document.getElementById('nav-' + p);
+                if (navEl) {
+                    if (p === target) {
+                        navEl.className = "bg-primary text-black px-4 py-1 rounded-lg text-sm font-bold tracking-wide shadow-[0_0_12px_rgba(0,220,130,.4)] cursor-pointer";
+                    } else {
+                        navEl.className = "px-4 py-1 rounded-lg text-sm font-medium text-zinc-500 hover:text-white hover:bg-white/5 transition cursor-pointer";
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+
+</html>

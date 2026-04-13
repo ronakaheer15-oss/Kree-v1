@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Kree — Light Mode</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+    <link href="https://fonts.googleapis.com" rel="preconnect" />
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&amp;display=swap"
+        rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet" />
+    <script>
+        window.tailwind = window.tailwind || {};
+        window.tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#00DC82",
+                        secondary: "#a855f7",
+                        accent: "#fbbf24",
+                        "background-light": "#f5f5f7",
+                        "panel-light": "#ffffff",
+                        "border-light": "#e5e7eb",
+                    },
+                    fontFamily: {
+                        display: ["'Rajdhani'", "sans-serif"],
+                        mono: ["'Courier New'", "monospace"],
+                    },
+                    borderRadius: {
+                        DEFAULT: "0.5rem",
+                        'xl': "1rem",
+                        '2xl': "1.5rem",
+                    },
+                    boxShadow: {
+                        'neon': '0 0 10px rgba(0, 220, 130, 0.3)',
+                        'neon-purple': '0 0 10px rgba(168, 85, 247, 0.3)',
+                        'soft': '0 2px 12px rgba(0,0,0,0.06)',
+                        'card': '0 1px 4px rgba(0,0,0,0.07)',
+                    }
+                },
+            },
+        };
+    </script>
+    <style>
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #d1d5db;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #9ca3af;
+        }
+
+        @keyframes float {
+            0% {
+                transform: translateY(0px) rotate(0deg);
+            }
+
+            50% {
+                transform: translateY(-10px) rotate(2deg);
+            }
+
+            100% {
+                transform: translateY(0px) rotate(0deg);
+            }
+        }
+
+        @keyframes pulse-glow {
+            0%,
+            100% {
+                opacity: 0.8;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 1;
+                transform: scale(1.05);
+            }
+        }
+
+        .orb-container {
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .orb-glow {
+            animation: pulse-glow 3s ease-in-out infinite;
+        }
+    </style>
+</head>
+
+<body
+    class="bg-background-light text-gray-800 font-display h-screen overflow-hidden flex flex-col antialiased selection:bg-primary selection:text-black">
+    <header
+        class="h-14 flex items-center justify-between px-6 border-b border-border-light bg-panel-light z-10 shrink-0 shadow-soft">
+        <div class="flex items-center space-x-2">
+            <div class="w-3 h-3 rounded-full bg-red-500 hover:bg-red-400 cursor-pointer transition"></div>
+            <div class="w-3 h-3 rounded-full bg-yellow-500 hover:bg-yellow-400 cursor-pointer transition"></div>
+            <div class="w-3 h-3 rounded-full bg-green-500 hover:bg-green-400 cursor-pointer transition"></div>
+        </div>
+        <nav class="flex space-x-1 bg-gray-100 p-1 rounded-lg">
+            <button class="bg-primary text-black px-4 py-1 rounded text-sm font-bold shadow-neon">DASHBOARD</button>
+            <button
+                class="px-4 py-1 rounded text-sm font-medium text-gray-500 hover:bg-gray-200 transition">CONTACTS</button>
+            <button
+                class="px-4 py-1 rounded text-sm font-medium text-gray-500 hover:bg-gray-200 transition">NOTES</button>
+            <button
+                class="px-4 py-1 rounded text-sm font-medium text-gray-500 hover:bg-gray-200 transition">CONNECT</button>
+            <button
+                class="px-4 py-1 rounded text-sm font-medium text-gray-500 hover:bg-gray-200 transition">PHONE</button>
+        </nav>
+        <div class="flex items-center space-x-4 text-xs font-mono text-gray-400">
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+                SYSTEM READY</span>
+            <span>NET: <span class="text-primary font-bold">ONLINE</span></span>
+        </div>
+        <button class="p-2 rounded-full hover:bg-gray-200 transition">
+            <span class="material-icons-outlined text-gray-500 text-lg">brightness_6</span>
+        </button>
+    </header>
+    <main class="flex-1 p-4 grid grid-cols-1 lg:grid-cols-12 gap-4 min-h-0 overflow-hidden">
+        <!-- LEFT COLUMN -->
+        <div class="lg:col-span-3 flex flex-col gap-4 overflow-y-auto pr-1">
+            <!-- Visual Input -->
+            <div
+                class="bg-panel-light rounded-xl border border-border-light p-4 flex flex-col h-64 relative group shadow-card">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-bold tracking-widest text-gray-500 uppercase flex items-center gap-1">
+                        <span class="material-icons-outlined text-sm text-primary">visibility</span> Visual Input
+                    </span>
+                    <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                </div>
+                <div
+                    class="flex-1 border-2 border-dashed border-gray-200 rounded-lg overflow-hidden relative bg-gray-50 transition group-hover:border-primary group-hover:text-primary">
+                    <video id="kree-webcam" autoplay muted playsinline class="w-full h-full object-cover hidden"></video>
+                    <div id="kree-cam-offline"
+                        class="absolute inset-0 flex flex-col items-center justify-center text-gray-400 bg-gray-50 gap-2">
+                        <span class="material-icons-outlined text-4xl mb-2">videocam_off</span>
+                        <span class="text-xs font-mono uppercase tracking-widest">Video Feed Offline</span>
+                    </div>
+                </div>
+            </div>
+            <!-- System Metrics -->
+            <div class="bg-panel-light rounded-xl border border-border-light p-4 shadow-card">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-xs font-bold tracking-widest text-gray-500 uppercase flex items-center gap-1">
+                        <span class="material-icons-outlined text-sm text-secondary">memory</span> System Metrics
+                    </span>
+                    <span
+                        class="text-[10px] bg-green-50 text-primary px-1.5 py-0.5 rounded border border-primary/30 font-mono font-bold">ONLINE</span>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-gray-50 rounded-lg p-3 border border-gray-200 relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-1 h-full bg-primary"></div>
+                        <div class="flex justify-between items-end mb-1">
+                            <span class="material-icons-outlined text-primary text-lg">developer_board</span>
+                            <span class="text-2xl font-bold text-gray-800"><span id="kree-cpu-val">--</span><span
+                                    class="text-sm text-gray-400 font-normal">%</span></span>
+                        </div>
+                        <div class="text-[10px] text-gray-500 font-mono uppercase tracking-wider">CPU Load</div>
+                        <div class="w-full h-1 bg-gray-200 mt-2 rounded-full overflow-hidden">
+                            <div id="kree-cpu-bar" class="h-full bg-primary" style="width:0%"></div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-3 border border-gray-200 relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-1 h-full bg-secondary"></div>
+                        <div class="flex justify-between items-end mb-1">
+                            <span class="material-icons-outlined text-secondary text-lg">dns</span>
+                            <span class="text-2xl font-bold text-gray-800"><span id="kree-ram-val">--</span><span
+                                    class="text-sm text-gray-400 font-normal">%</span></span>
+                        </div>
+                        <div class="text-[10px] text-gray-500 font-mono uppercase tracking-wider">RAM Usage</div>
+                        <div class="w-full h-1 bg-gray-200 mt-2 rounded-full overflow-hidden">
+                            <div id="kree-ram-bar" class="h-full bg-secondary" style="width:0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Top Processes -->
+            <div class="bg-panel-light rounded-xl border border-border-light p-4 flex-1 shadow-card">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="material-icons-outlined text-sm text-gray-400">settings_applications</span>
+                    <span class="text-xs font-bold tracking-widest text-gray-500 uppercase">Top Processes</span>
+                </div>
+                <table class="w-full text-left text-xs font-mono">
+                    <thead>
+                        <tr class="text-gray-400 border-b border-gray-200">
+                            <th class="pb-2 font-normal">APP NAME</th>
+                            <th class="pb-2 font-normal text-right">CPU</th>
+                            <th class="pb-2 font-normal text-right">MEM</th>
+                        </tr>
+                    </thead>
+                    <tbody id="kree-procs-body" class="divide-y divide-gray-100 text-gray-600">
+                        <tr>
+                            <td colspan="3" class="py-4 text-center text-gray-400 text-[10px]">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <!-- CENTER: AI Orb -->
+        <div
+            class="lg:col-span-6 flex flex-col h-full bg-white rounded-xl border border-border-light relative overflow-hidden shadow-2xl">
+            <div class="absolute inset-0 z-0 opacity-5 pointer-events-none"
+                style="background-image: radial-gradient(circle at 2px 2px, #ccc 1px, transparent 0); background-size: 30px 30px;">
+            </div>
+            <div class="absolute top-6 left-6 z-10">
+                <div class="flex items-center gap-2 text-primary mb-1">
+                    <span class="material-icons-outlined text-sm">hub</span>
+                    <span class="text-xs font-bold tracking-[0.2em] uppercase">Core System</span>
+                </div>
+                <div class="text-[9px] text-gray-400 font-mono tracking-widest">V.2.4.0 STABLE</div>
+            </div>
+            <div class="flex-1 flex items-center justify-center relative z-0">
+                <div class="orb-container relative w-64 h-64 flex items-center justify-center">
+                    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(251,191,36,0.25)_0%,transparent_70%)] rounded-full orb-glow"></div>
+                    <div
+                        class="w-48 h-48 rounded-full relative z-10 overflow-hidden border border-accent/30 shadow-[0_0_30px_rgba(251,191,36,0.25)] bg-black">
+                        <img alt="AI core orb"
+                            class="w-full h-full object-cover opacity-80 mix-blend-screen hover:scale-110 transition duration-[10s]"
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuCPOeVZDBXgQvEFI4S6rE6t8oYwBAWPDJK1NQMgLZTNPM89DJ64ORQ3nSezB-K9HOtSndUx_y37db0n8VtbQogI31XP1OomYjA7FMiN_M3X2ANuXSX5vTI5z5XxU8fZDtxHJGob3oaCUNGctBxidx2al0me9lDGggbVjQ0PU2BaqziGXAiqSt5UZI8gK7lRAMFWbKKUfvIIY9IahH7tt8Yl_-Ymfrytj44QR0yNRnwy6WtueEEdBMNQKXVT2Fv_o2vq6hiuEpPcWA" />
+                        <div class="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
+                    </div>
+                    <div
+                        class="absolute inset-0 border border-dashed border-accent/20 rounded-full w-64 h-64 animate-[spin_10s_linear_infinite]">
+                    </div>
+                    <div
+                        class="absolute inset-0 border border-dotted border-primary/20 rounded-full w-80 h-80 -m-8 animate-[spin_15s_linear_infinite_reverse]">
+                    </div>
+                </div>
+            </div>
+            <div class="p-6 relative z-10 flex justify-center w-full">
+                <div
+                    class="bg-white/80 backdrop-blur-md border border-gray-200 rounded-2xl p-2 flex items-center gap-4 shadow-soft">
+                    <button
+                        class="w-10 h-10 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-500 transition">
+                        <span class="material-icons-outlined">mic_off</span>
+                    </button>
+                    <button
+                        class="bg-primary hover:bg-emerald-400 text-black px-8 py-3 rounded-xl font-bold tracking-wide shadow-neon flex items-center gap-2 transition transform hover:-translate-y-1">
+                        <span class="material-icons-outlined animate-pulse">mic</span> LISTEN
+                    </button>
+                    <button
+                        class="w-10 h-10 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-500 transition">
+                        <span class="material-icons-outlined">videocam_off</span>
+                    </button>
+                    <div class="w-px h-6 bg-gray-300 mx-1"></div>
+                    <button
+                        class="w-10 h-10 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-500 transition">
+                        <span class="material-icons-outlined">settings</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <!-- RIGHT: Transcript -->
+        <div
+            class="lg:col-span-3 flex flex-col h-full bg-panel-light rounded-xl border border-border-light overflow-hidden shadow-card">
+            <div class="p-4 border-b border-border-light flex justify-between items-center">
+                <span class="text-xs font-bold tracking-widest text-gray-500 uppercase flex items-center gap-1">
+                    <span class="material-icons-outlined text-sm">segment</span> Transcript
+                </span>
+                <span
+                    class="material-icons-outlined text-gray-400 text-sm cursor-pointer hover:text-primary">download</span>
+            </div>
+            <div id="kree-transcript" class="flex-1 overflow-y-auto p-4 space-y-4">
+                <div class="flex items-center justify-center h-full">
+                    <p class="text-[10px] text-gray-400 font-mono uppercase tracking-widest text-center">
+                        Awaiting conversation...
+                    </p>
+                </div>
+            </div>
+            <div class="p-3 bg-gray-50 border-t border-border-light flex gap-2">
+                <input id="kree-input"
+                    class="bg-transparent border-none text-sm text-gray-800 placeholder-gray-400 focus:ring-0 w-full font-mono"
+                    placeholder="Type command..." type="text" />
+                <button class="text-primary hover:text-emerald-500 transition">
+                    <span class="material-icons-outlined">send</span>
+                </button>
+            </div>
+        </div>
+    </main>
+</body>
+
+</html>

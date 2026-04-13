@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Kree Widget</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Material+Icons+Outlined"
+        rel="stylesheet" />
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html,
+        body {
+            background: transparent !important;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            -webkit-app-region: drag;
+        }
+
+        @keyframes ripple {
+            0% {
+                transform: scale(1);
+                opacity: .5;
+            }
+
+            100% {
+                transform: scale(1.7);
+                opacity: 0;
+            }
+        }
+
+        @keyframes popIn {
+            0% {
+                transform: scale(.8);
+                opacity: 0;
+            }
+
+            70% {
+                transform: scale(1.06);
+            }
+
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: .35;
+            }
+        }
+
+        .bar {
+            display: flex;
+            align-items: center;
+            height: 60px;
+            padding: 0 14px 0 10px;
+            border-radius: 9999px;
+            /* maximally transparent pill */
+            background: rgba(10, 10, 12, 0.72);
+            backdrop-filter: blur(24px) saturate(1.5);
+            -webkit-backdrop-filter: blur(24px) saturate(1.5);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            box-shadow:
+                0 12px 40px rgba(0, 0, 0, .55),
+                0 2px 8px rgba(0, 0, 0, .35),
+                inset 0 1px 0 rgba(255, 255, 255, .04);
+            animation: popIn .35s cubic-bezier(.34, 1.56, .64, 1) both;
+            -webkit-app-region: drag;
+        }
+
+        /* Brand */
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding-right: 14px;
+            border-right: 1px solid rgba(255, 255, 255, 0.06);
+            margin-right: 12px;
+            -webkit-app-region: drag;
+        }
+
+        .brand-k {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, .04);
+            border: 1px solid rgba(255, 255, 255, .08);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            font-size: 14px;
+            color: #71717a;
+        }
+
+        .brand-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: .22em;
+            font-weight: 700;
+            color: #52525b;
+        }
+
+        /* Buttons */
+        .btn-row {
+            display: flex;
+            gap: 6px;
+            margin-right: 10px;
+            -webkit-app-region: no-drag;
+        }
+
+        .btn {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, .05);
+            background: rgba(255, 255, 255, .03);
+            color: #71717a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background .18s, color .18s, transform .15s;
+            outline: none;
+            position: relative;
+            overflow: hidden;
+            -webkit-app-region: no-drag;
+            font-family: 'Material Icons Outlined';
+            font-size: 20px;
+            font-feature-settings: 'liga';
+            -webkit-font-feature-settings: 'liga';
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .btn-off {
+            color: #ef4444 !important;
+            background: rgba(239, 68, 68, 0.08) !important;
+            border-color: rgba(239, 68, 68, 0.2) !important;
+        }
+
+        .btn::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, .12);
+            transform: scale(0);
+            opacity: 0;
+            transition: transform .4s, opacity .4s;
+        }
+
+        .btn:hover {
+            color: #e4e4e7;
+            transform: scale(1.1);
+        }
+
+        .btn:hover::after {
+            transform: scale(1);
+            opacity: 0;
+            animation: ripple .5s ease-out forwards;
+        }
+
+        .btn:active {
+            transform: scale(.93);
+        }
+
+        .btn-call {
+            color: #60a5fa;
+        }
+
+        .btn-call:hover {
+            background: rgba(96, 165, 250, .15);
+        }
+
+        .dot-live {
+            position: absolute;
+            top: 3px;
+            right: 3px;
+            width: 8px;
+            height: 8px;
+            background: #22c55e;
+            border: 2px solid rgba(10, 10, 12, .72);
+            border-radius: 50%;
+            animation: pulse 1.8s ease-in-out infinite;
+        }
+
+        .btn-close {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: none;
+            background: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background .18s;
+            -webkit-app-region: no-drag;
+            font-family: 'Material Icons Outlined';
+            font-size: 17px;
+            color: #ef4444;
+            font-feature-settings: 'liga';
+            -webkit-font-feature-settings: 'liga';
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .btn-close:hover {
+            background: rgba(239, 68, 68, .18);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="bar">
+        <div class="brand">
+            <div class="brand-k">K</div>
+            <span class="brand-text">Kree</span>
+        </div>
+        <div class="btn-row">
+            <button class="btn btn-call" id="btn-call" onclick="hCall()">
+                call
+                <span class="dot-live"></span>
+            </button>
+            <button class="btn" id="btn-mic" onclick="hMic()">mic</button>
+            <button class="btn" id="btn-cam" onclick="hCam()">videocam_off</button>
+        </div>
+        <button class="btn-close" onclick="hClose()">close</button>
+    </div>
+
+    <script>
+        let micOn = true;
+        let camOn = false;
+
+        function api(m) {
+            if (window.pywebview && window.pywebview.api && window.pywebview.api[m])
+                window.pywebview.api[m]();
+        }
+
+        function hCall() { api('on_call_click'); }
+
+        function hMic() {
+            micOn = !micOn;
+            const btn = document.getElementById('btn-mic');
+            btn.textContent = micOn ? 'mic' : 'mic_off';
+            if (micOn) { btn.classList.remove('btn-off'); } else { btn.classList.add('btn-off'); }
+            api('on_mic_click');
+        }
+
+        function hCam() {
+            camOn = !camOn;
+            const btn = document.getElementById('btn-cam');
+            btn.textContent = camOn ? 'videocam' : 'videocam_off';
+            if (camOn) { btn.classList.remove('btn-off'); } else { btn.classList.add('btn-off'); }
+            api('on_cam_click');
+        }
+
+        function hClose() { api('restore_from_widget'); }
+
+        // Entry animation
+        document.addEventListener('DOMContentLoaded', function() {
+            const bar = document.querySelector('.bar');
+            if (bar) {
+                bar.style.opacity = '0';
+                bar.style.transform = 'scale(0.7) translateY(20px)';
+                requestAnimationFrame(function() {
+                    bar.style.transition = 'opacity 0.35s cubic-bezier(.34,1.56,.64,1), transform 0.35s cubic-bezier(.34,1.56,.64,1)';
+                    bar.style.opacity = '1';
+                    bar.style.transform = 'scale(1) translateY(0)';
+                });
+            }
+        });
+    </script>
+</body>
+
+</html>
