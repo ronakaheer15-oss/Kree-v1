@@ -1,0 +1,7 @@
+{
+    "posthog_api_key": "",
+    "supabase_url": "",
+    "supabase_anon_key": "",
+    "github_repo": "YOUR_USERNAME/kree",
+    "kree_version": "1.0.0"
+}

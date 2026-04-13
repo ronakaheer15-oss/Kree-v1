@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "active_user_id": "a1c8632a38354f1b8d1774ac3bccf66a",
+  "users": [
+    {
+      "user_id": "a1c8632a38354f1b8d1774ac3bccf66a",
+      "handle": "Ronak",
+      "email": "Ronakaheer15@gmail.com",
+      "display_name": "Ronak",
+      "password_salt": "a62bade02c3b42dfa57c5869e9b44dac",
+      "password_hash": "793915c002ba6f91eee45939f418696e69b53d4d14044b1f66aef14899bb99b0",
+      "pin_salt": "77d7203b784ddfc62c5c8ef217e8e524",
+      "pin_hash": "c26e0b7b895054164fd233ab983199edee2922d67fa92858c2831b5469d3adc3",
+      "pin_requires_change": false,
+      "created_at": "2026-03-30T09:56:20+00:00",
+      "last_login_at": "2026-04-04T10:45:06+00:00",
+      "api_key_path": "E:\\Mark-XXX-main\\Mark-XXX-main\\config\\user_secrets\\a1c8632a38354f1b8d1774ac3bccf66a.api",
+      "updated_at": "2026-03-30T09:57:11+00:00"
+    }
+  ]
+}

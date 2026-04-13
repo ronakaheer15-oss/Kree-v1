@@ -1,0 +1,55 @@
+{
+    "chains": {
+        "work session": [
+            {
+                "narration": "Opening your workspace, sir.",
+                "action": "open_app",
+                "target": "code"
+            },
+            {
+                "narration": "Pulling up Notion.",
+                "action": "browser_control",
+                "url": "https://notion.so"
+            },
+            {
+                "narration": "Starting focus music.",
+                "action": "open_app",
+                "target": "spotify"
+            }
+        ],
+        "gaming session": [
+            {
+                "narration": "Launching Discord.",
+                "action": "open_app",
+                "target": "discord"
+            },
+            {
+                "narration": "Opening Steam.",
+                "action": "open_app",
+                "target": "steam"
+            },
+            {
+                "narration": "Game mode active.",
+                "action": "computer_settings",
+                "setting": "dnd"
+            }
+        ]
+    },
+    "trigger_automations": {
+        "code": "You opened Visual Studio Code. Shall I load your last project?",
+        "chrome": "Chrome is open. Want me to check your calendar?",
+        "spotify": "Resuming your last playlist."
+    },
+    "scheduled_tasks": [
+        {
+            "time": "09:00",
+            "narration": "Good morning sir, here is your daily briefing.",
+            "macro": "briefing"
+        },
+        {
+            "time": "23:00",
+            "narration": "Wrapping up sir, doing a system save.",
+            "macro": "shutdown"
+        }
+    ]
+}

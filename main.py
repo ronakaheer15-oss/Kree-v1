@@ -1,3 +1,42 @@
+from __future__ import annotations
+
+# ── CRITICAL: Force UTF-8 stdout/stderr on Windows ──────────────────────────
+# Without this, any print() containing emoji (💬, ⚡, etc.) crashes the
+# entire thread with UnicodeEncodeError because Windows uses cp1252/cp437.
+import sys as _sys
+import io as _io
+import os as _os
+import platform as _platform
+import logging as _logging
+from pathlib import Path as _Path
+
+if hasattr(_sys.stdout, 'buffer'):
+    _sys.stdout = _io.TextIOWrapper(_sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+if hasattr(_sys.stderr, 'buffer'):
+    _sys.stderr = _io.TextIOWrapper(_sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+
+# ── EMERGENGY LOGGING ────────────────────────────────────────────────────────
+try:
+    if getattr(_sys, "frozen", False):
+        log_dir = _Path(_os.environ.get("LOCALAPPDATA", "C:\\Temp")) / "Kree AI"
+    else:
+        log_dir = _Path(__file__).parent / "logs"
+    
+    log_dir.mkdir(parents=True, exist_ok=True)
+    _LOG_FILE = log_dir / "kree_debug.log"
+
+    _logging.basicConfig(
+        filename=str(_LOG_FILE),
+        level=_logging.DEBUG,
+        format='%(asctime)s [%(levelname)s] %(message)s',
+        filemode='a'
+    )
+    _logging.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    _logging.info("Kree AI Production Runtime Starting (DEBUG MODE)...")
+    _logging.info(f"Platform: {_platform.system()} {_platform.release()}")
+except Exception as e:
+    _sys.stderr.write(f"CRITICAL: Logging init failed: {e}\n")
+
 import asyncio
 import collections
 import threading
@@ -22,8 +61,6 @@ except ImportError:
     cv2 = None      # type: ignore[assignment]
     print("[JARVIS] ⚠️ PyAudio or CV2 not installed.")
 
-from google import genai  # type: ignore[import]
-from google.genai import types  # type: ignore[import]
 import time
 import wave
 from ui import JarvisUI  # type: ignore[import]
@@ -36,6 +73,7 @@ from agent.task_queue import get_queue  # type: ignore[import]
 from actions.flight_finder import flight_finder  # type: ignore[import]
 from actions.open_app         import open_app  # type: ignore[import]
 from actions.downloader_updater import downloader_updater  # type: ignore[import]
+from actions.turboquant_helper import turboquant_helper  # type: ignore[import]
 from actions.openapps_automation import openapps_automation  # type: ignore[import]
 from actions.weather_report   import weather_action  # type: ignore[import]
 from actions.send_message     import send_message  # type: ignore[import]
@@ -51,7 +89,8 @@ from actions.code_helper      import code_helper  # type: ignore[import]
 from actions.dev_agent        import dev_agent  # type: ignore[import]
 from actions.web_search       import web_search as web_search_action  # type: ignore[import]
 from actions.computer_control import computer_control  # type: ignore[import]
-
+from actions.email_calendar   import productivity_manager  # type: ignore[import]
+from core.trigger_engine import TriggerEngine
 
 def get_base_dir():
     if getattr(sys, "frozen", False):
@@ -90,15 +129,53 @@ def _get_pya() -> Any:
     return _pya
 
 
+# Global definitions to prevent IDE warnings
+genai = None
+types = None
+
 def _get_api_key() -> str:
+    import os
+    if "KREE_ACTIVE_API_KEY" in os.environ:
+        return os.environ["KREE_ACTIVE_API_KEY"]
     import core.vault as vault  # type: ignore[import]
 
     return vault.load_api_key(API_CONFIG_PATH)
 
 
+def _ensure_genai_sdk() -> tuple[Any, Any]:
+    global genai, types
+    if genai is None or types is None:
+        from google import genai as genai_module  # type: ignore[import]
+        from google.genai import types as types_module  # type: ignore[import]
+
+        genai = genai_module  # type: ignore[assignment]
+        types = types_module  # type: ignore[assignment]
+    return genai, types
+
+
 def _load_system_prompt() -> str:
     try:
-        return PROMPT_PATH.read_text(encoding="utf-8")
+        base_text = PROMPT_PATH.read_text(encoding="utf-8")
+        
+        try:
+            import memory.history_manager as hist
+            import core.user_profile as up
+            
+            # Fetch Context
+            history_summary = hist.get_memory_summary()
+            profile = up.get_user_profile()
+            
+            # Identity Injection
+            ident_block = ""
+            if profile.get("name"):
+                ident_block += f"\nThe user's name is {profile['name']}. Address them as sir.\n"
+            if profile.get("default_email"):
+                ident_block += f"Default email: {profile['default_email']}\n"
+                
+            return f"{base_text}\n\n{ident_block}\n\n=== RECENT CONTEXT ===\n{history_summary}\n"
+        except Exception as e:
+            print(f"[JARVIS] ⚠️ Dynamic prompt injection failed: {e}")
+            return base_text
     except Exception:
         return (
             "You are Kree, an advanced AI assistant. "
@@ -107,32 +184,293 @@ def _load_system_prompt() -> str:
         )
 
 
-def _local_welcome_voice() -> None:
-    """Fast local welcome voice to avoid model latency on startup."""
-    if platform.system() != "Windows":
-        return
+def _local_speech_voice(text: str) -> None:
+    """Instant local Windows speech using Edge TTS neural voices to eliminate robotic fallback."""
+    import threading
+    def speak():
+        try:
+            import os
+            import subprocess
+            import uuid
+            
+            from memory.config_manager import load_audio_settings
+            settings = load_audio_settings()
+            gemini_voice = settings.get("kree_voice", "Kore")
+            voice = {
+                "Aoede": "en-US-AriaNeural",
+                "Kore": "en-US-JennyNeural",
+                "Puck": "en-US-GuyNeural",
+                "Charon": "en-US-ChristopherNeural"
+            }.get(gemini_voice, "en-US-JennyNeural")
+            
+            # Use same high-fidelity voice as the wake word
+            temp_mp3 = BASE_DIR / "assets" / "sounds" / f"temp_speech_{uuid.uuid4().hex[:6]}.mp3"
+            temp_mp3.parent.mkdir(parents=True, exist_ok=True)
+            
+            import edge_tts
+            import asyncio
+            # Create isolated event loop for synchronous thread evaluation
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(edge_tts.Communicate(text, voice).save(str(temp_mp3)))
+            finally:
+                loop.close()
+            
+            # Play it using pygame synchronously in this thread
+            import pygame
+            import time
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
+            pygame.mixer.music.load(str(temp_mp3))
+            pygame.mixer.music.play()
+            
+            # Wait for it to finish playing
+            while pygame.mixer.music.get_busy():
+                time.sleep(0.1)
+                
+            # Cleanup
+            pygame.mixer.music.unload()
+            try: os.remove(str(temp_mp3))
+            except: pass
+            
+        except Exception as e:
+            print(f"[KREE TTS] ⚠️ Local neural speech failed: {e}")
+            
+    threading.Thread(target=speak, daemon=True).start()
+
+
+def _local_welcome_voice(kree_instance) -> None:
+    """Play pre-cached greeting and write 'Kree is online' to transcript."""
     try:
-        script = (
-            "Add-Type -AssemblyName System.Speech;"
-            "$s=New-Object System.Speech.Synthesis.SpeechSynthesizer;"
-            "$s.Rate=1;$s.Volume=90;"
-            "$s.SpeakAsync('System online. Welcome back.');"
-        )
-        subprocess.Popen(
-            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
+        greeting_mp3 = BASE_DIR / "assets" / "sounds" / "active_greeting.mp3"
+        import os
+        if greeting_mp3.exists() and os.path.getsize(greeting_mp3) > 1000:
+            import pygame
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
+            pygame.mixer.music.load(str(greeting_mp3))
+            pygame.mixer.music.play()
+    except Exception as e:
+        print(f"[JARVIS] Welcome voice error (non-fatal): {e}")
+    
+    try:
+        kree_instance.ui.write_log("Kree: Kree is online and ready, sir.")
     except Exception:
         pass
 
+
+def _build_contextual_greeting(name: str = "sir") -> str:
+    """
+    Highly advanced context-aware greeting engine.
+    Checks battery level, active window title (what the user is currently looking at),
+    and time of day to formulate a highly targeted and natural greeting.
+    """
+    import datetime
+    import random
+    
+    now = datetime.datetime.now()
+    hr = now.hour
+    day = now.weekday()  # 0=Monday, 6=Sunday
+
+    # 1. Check Battery Status
+    battery_context = ""
+    try:
+        import psutil
+        battery = psutil.sensors_battery()
+        if battery and battery.percent < 20 and not battery.power_plugged:
+            battery_context = "low_battery"
+    except Exception:
+        pass
+
+    # 2. Check Active Window via Windows API
+    active_title = ""
+    try:
+        import ctypes
+        hwnd = ctypes.windll.user32.GetForegroundWindow()
+        if hwnd:
+            length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
+            buf = ctypes.create_unicode_buffer(length + 1)
+            ctypes.windll.user32.GetWindowTextW(hwnd, buf, length + 1)
+            active_title = buf.value.lower()
+    except Exception:
+        pass
+
+    # 3. Determine specific Activity Context
+    activity_context = ""
+    if battery_context == "low_battery":
+        activity_context = "low_battery"
+    elif "youtube" in active_title:
+        activity_context = "youtube"
+    elif "github" in active_title or "pull request" in active_title:
+        activity_context = "github"
+    elif "stackoverflow" in active_title or "stack overflow" in active_title:
+        activity_context = "debugging"
+    elif "visual studio code" in active_title or "code.exe" in active_title:
+        activity_context = "coding"
+    elif "spotify" in active_title or "music" in active_title:
+        activity_context = "music"
+
+    # Fallback to tasklist if foreground detection yields nothing specific
+    if not activity_context:
+        try:
+            import subprocess
+            tasklist = subprocess.check_output(
+                "tasklist /FO CSV /NH", shell=True, stderr=subprocess.DEVNULL
+            ).decode(errors="ignore").lower()
+
+            if "code.exe" in tasklist or "devenv.exe" in tasklist:
+                activity_context = "coding"
+            elif "spotify.exe" in tasklist:
+                activity_context = "music"
+        except Exception:
+            pass
+
+    # ── Prioritized Greeting Logic ──
+
+    # Priority 1: Critical System Status
+    if activity_context == "low_battery":
+        return random.choice([
+            f"Sir, battery is extremely low. You might want to plug in.",
+            f"Battery critical, {name}. Please connect power."
+        ])
+
+    # Priority 2: Specific Foreground Activities
+    if activity_context == "youtube":
+        return random.choice([
+            f"Enjoying the video, {name}?",
+            f"Watching something interesting, {name}?",
+            f"Yes, {name}?"
+        ])
+    elif activity_context == "github":
+        return random.choice([
+            f"Reviewing repositories, {name}?",
+            f"Need help with GitHub, {name}?",
+            f"Looking at pull requests, {name}?"
+        ])
+    elif activity_context == "debugging":
+        return random.choice([
+            f"Need help debugging, {name}?",
+            f"Stuck on a bug, {name}?",
+            f"What's the error say, {name}?"
+        ])
+    elif activity_context == "coding":
+        return random.choice([
+            f"Back to the code, {name}?",
+            f"What are we building, {name}?",
+            f"Ready to code when you are, {name}.",
+            f"What do you need {name}?"
+        ])
+    elif activity_context == "music":
+        return random.choice([
+            f"{name}?",
+            f"Yes?",
+            f"I'm here."
+        ])
+
+    # Priority 3: Time & Day combinations
+    if day == 0 and hr < 12: # Monday Morning
+        return random.choice([
+            f"Monday morning, {name}. Ready to conquer the week?",
+            f"Welcome to a new week, {name}.",
+            f"Monday morning, let's get started."
+        ])
+    elif day == 4 and hr > 16: # Friday Evening
+        return random.choice([
+            f"It's Friday evening, {name}. Almost time to relax.",
+            f"Wrapping up the week, {name}?",
+            f"Friday evening, {name}. What's left?"
+        ])
+
+    # Priority 4: Standard Time-based greetings
+    if hr < 6:
+        return random.choice([
+            f"Working late, {name}?",
+            f"Still up, {name}?",
+            f"It's quite late, {name}. What do you need?"
+        ])
+    elif hr < 12:
+        return random.choice([
+            f"Good morning, {name}.",
+            f"Morning, {name}. Ready to start?",
+            f"Good morning. What's the plan for today?"
+        ])
+    elif hr < 18:
+        return random.choice([
+            f"Kree online, {name}.",
+            f"Good afternoon, {name}.",
+            f"Yes, {name}?",
+            f"How can I help you, {name}?"
+        ])
+    elif hr < 22:
+        return random.choice([
+            f"Good evening, {name}.",
+            f"Evening, {name}. What's next?",
+            f"Yes, {name}?"
+        ])
+    else:
+        return random.choice([
+            f"Still up, {name}?",
+            f"Working late, {name}?",
+            f"Good evening, {name}."
+        ])
+
+class ContextTTSEngine:
+    """Pre-generates the context greeting as an MP3 using high-quality Edge TTS in the background."""
+    def __init__(self):
+        import os
+        import warnings
+        os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
+        warnings.filterwarnings("ignore", category=UserWarning, module="pygame.pkgdata")
+        import pygame
+        
+        self.last_text = ""
+        self.tts_path = BASE_DIR / "assets" / "sounds" / "active_greeting.mp3"
+        self.running = True
+        
+        try:
+            pygame.mixer.init()
+        except: pass
+        
+        threading.Thread(target=self._loop, daemon=True).start()
+
+    def _loop(self):
+        import time
+        import os
+        import subprocess
+        from memory.config_manager import load_audio_settings
+        while self.running:
+            try:
+                current = _build_contextual_greeting("sir")
+                settings = load_audio_settings()
+                gemini_voice = settings.get("kree_voice", "Kore")
+                edge_voice = {
+                    "Aoede": "en-US-AriaNeural",
+                    "Kore": "en-US-JennyNeural",
+                    "Puck": "en-US-GuyNeural",
+                    "Charon": "en-US-ChristopherNeural"
+                }.get(gemini_voice, "en-US-JennyNeural")
+
+                import edge_tts
+                import asyncio
+                if current != self.last_text or not hasattr(self, 'last_voice') or self.last_voice != edge_voice:
+                    self.tts_path.parent.mkdir(parents=True, exist_ok=True)
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        loop.run_until_complete(edge_tts.Communicate(current, edge_voice).save(str(self.tts_path)))
+                    finally:
+                        loop.close()
+                    self.last_text = current
+                    self.last_voice = edge_voice
+            except Exception:
+                pass
+            time.sleep(5)
 
 _memory_turn_counter = 0
 _memory_turn_lock = threading.Lock()
 _MEMORY_EVERY_N_TURNS = 5
 _last_memory_input = ""
-
 
 def _update_memory_async(user_text: str, jarvis_text: str) -> None:
     """
@@ -143,64 +481,60 @@ def _update_memory_async(user_text: str, jarvis_text: str) -> None:
     Result : ~80% fewer API calls vs original
     """
     global _memory_turn_counter, _last_memory_input
-
     with _memory_turn_lock:
-        _memory_turn_counter += 1  # type: ignore[name-defined]
-        current_count = _memory_turn_counter
-
-    if current_count % _MEMORY_EVERY_N_TURNS != 0:
-        return
-
-    text = user_text.strip()
-    if len(text) < 10:
-        return
-    if text == _last_memory_input:
-        return
-    _last_memory_input = text
-
-    try:
-        import google.generativeai as genai_sync  # type: ignore[import]
-
-        genai_sync.configure(api_key=_get_api_key())
-        model = genai_sync.GenerativeModel("gemini-2.5-flash-lite")
-
-        check = model.generate_content(
-            f"Does this message contain personal facts about the user "
-            f"(name, age, city, job, hobby, relationship, birthday, preference)? "
-            f"Reply only YES or NO.\n\nMessage: {text[:300]}"  # type: ignore[index]
-        )
-        if "YES" not in check.text.upper():
+        _memory_turn_counter += 1
+        _last_memory_input += f"USER: {user_text}\nKREE: {jarvis_text}\n"
+        if _memory_turn_counter < _MEMORY_EVERY_N_TURNS:
             return
+        
+        chunk_to_process = _last_memory_input
+        _last_memory_input = ""
+        _memory_turn_counter = 0
 
-        raw = model.generate_content(
-            f"Extract personal facts from this message. Any language.\n"
-            f"Return ONLY valid JSON or {{}} if nothing found.\n"
-            f"Extract: name, age, birthday, city, job, hobbies, preferences, relationships, language.\n"
-            f"Skip: weather, reminders, search results, commands.\n\n"
-            f"Format:\n"
-            f'{{"identity":{{"name":{{"value":"..."}}}}}}, '
-            f'"preferences":{{"hobby":{{"value":"..."}}}}, '
-            f'"notes":{{"job":{{"value":"..."}}}}}}\n\n'
-            f"Message: {text[:500]}\n\nJSON:"  # type: ignore[index]
-        ).text.strip()
+    def worker():
+        try:
+            from google import genai as genai_sync # type: ignore[import]
+            client = genai_sync.Client(api_key=_get_api_key())
+            
+            # Check if there is a fact
+            check_prompt = "Is there a new permanent fact or preference to remember about the user here? Reply only YES or NO.\n\n" + chunk_to_process
+            res_check = client.models.generate_content(model="gemini-2.5-flash-lite", contents=check_prompt)
+            if "yes" not in res_check.text.strip().lower():
+                return
 
-        raw = re.sub(r"```(?:json)?", "", raw).strip().rstrip("`").strip()
-        if not raw or raw == "{}":
-            return
+            ext_prompt = (
+                "Extract bullet points of new facts or preferences about the user. Do not include random chat.\n\n"
+                f"{chunk_to_process}"
+            )
+            res_ext = client.models.generate_content(model="gemini-2.5-flash-lite", contents=ext_prompt)
+            
+            # Logic to update memory would go here
+            print(f"[Memory] ✅ Updated: {res_ext.text.strip()}")
 
-        data = json.loads(raw)
-        if data:
-            update_memory(data)
-            print(f"[Memory] ✅ Updated: {list(data.keys())}")
-
-    except json.JSONDecodeError:
-        pass
-    except Exception as e:
-        if "429" not in str(e):
-            print(f"[Memory] ⚠️ {e}")
+        except Exception as e:
+            if "429" not in str(e):
+                print(f"[Memory] ⚠️ {e}")
+    threading.Thread(target=worker, daemon=True).start()
 
 
 TOOL_DECLARATIONS = [
+    {
+        "name": "trigger_macro",
+        "description": (
+            "Triggers a complex multi-app macro chain concurrently (e.g. 'work session', 'gaming session'). "
+            "Use this precisely when the user asks to initiate a 'session' or complex workflow."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "chain_name": {
+                    "type": "STRING",
+                    "description": "The logical name of the chain (e.g. 'work session')"
+                }
+            },
+            "required": ["chain_name"]
+        }
+    },
     {
         "name": "open_app",
         "description": (
@@ -314,6 +648,31 @@ TOOL_DECLARATIONS = [
                 "query": {
                     "type": "STRING",
                     "description": "Natural language request for auto action (e.g., 'download github' or 'update vscode')"
+                }
+            },
+            "required": ["action"]
+        }
+    },
+    {
+        "name": "turboquant_helper",
+        "description": (
+            "Reports whether TurboQuant and HuggingFace-style tooling are available, "
+            "prepares cache directories, and returns loader environment hints. Use this when the user asks about TurboQuant or future local model setup."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": "status | prepare_cache | environment | export"
+                },
+                "model_id": {
+                    "type": "STRING",
+                    "description": "Optional HuggingFace model id such as meta-llama/Llama-3.1-8B-Instruct"
+                },
+                "cache_root": {
+                    "type": "STRING",
+                    "description": "Optional cache root path for TurboQuant/HF assets"
                 }
             },
             "required": ["action"]
@@ -658,10 +1017,94 @@ TOOL_DECLARATIONS = [
         },
         "required": ["origin", "destination", "date"]
     }
+},
+{
+    "name": "smart_trigger",
+    "description": (
+        "Creates or removes autonomous background triggers for Kree. "
+        "Use when user says 'remind me every 10 mins', 'tell me if CPU goes over 90%', "
+        "'watch my downloads folder', etc. "
+    ),
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {
+            "action":         {"type": "STRING", "description": "create | remove"},
+            "name":           {"type": "STRING", "description": "A short distinct name for the trigger"},
+            "trigger_type":   {"type": "STRING", "description": "system | time | file"},
+            "metric":         {"type": "STRING", "description": "cpu | ram | time (e.g. 14:30) | dir_path"},
+            "operator":       {"type": "STRING", "description": ">= | <= | =="},
+            "value":          {"type": "STRING", "description": "Threshold value, e.g. '90' or '14:30'"},
+            "action_to_take": {"type": "STRING", "description": "Natural language command Kree will execute when fired"},
+            "silent":         {"type": "BOOLEAN", "description": "If true, Kree will execute silently unless it involves speaking (default: true)"},
+            "id_to_remove":   {"type": "STRING", "description": "ID of trigger to remove (if action=remove)"}
+        },
+        "required": ["action"]
+    }
+},
+{
+    "name": "file_controller",
+    "description": (
+        "Advanced file & folder management automation. "
+        "Use for bulk rename, organizing downloads, finding duplicates, etc."
+    ),
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {
+            "action":      {"type": "STRING", "description": "organize | rename_bulk | find_duplicates | move | delete"},
+            "path":        {"type": "STRING", "description": "Target directory path (default: Downloads or Desktop if not specified)"},
+            "pattern":     {"type": "STRING", "description": "Regex or glob pattern for renaming/finding"},
+            "destination": {"type": "STRING", "description": "Destination directory"}
+        },
+        "required": ["action"]
+    }
+},
+{
+    "name": "browser_control",
+    "description": (
+        "Automates browser actions in the background. "
+        "Use for filling forms, logging into sites, web scraping, or downloading files via URL."
+    ),
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {
+            "action": {"type": "STRING", "description": "search | form_fill | scrape | navigate"},
+            "url":    {"type": "STRING", "description": "Target website URL"},
+            "query":  {"type": "STRING", "description": "Search query or specific data to find/scrape"},
+            "form_data": {"type": "STRING", "description": "JSON string of data to fill into forms"}
+        },
+        "required": ["action"]
+    }
+},
+{
+    "name": "productivity_manager",
+    "description": (
+        "Manages emails and calendar events. "
+        "Use when user wants to read inbox, draft emails, send emails, or schedule meetings. "
+        "ALWAYS use action='draft_email' first if asked to compose or send an email, to allow user confirmation."
+    ),
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {
+            "action": {"type": "STRING", "description": "read_inbox | draft_email | send_email | schedule_meeting"},
+            "to": {"type": "STRING", "description": "Recipient name/address"},
+            "subject": {"type": "STRING", "description": "Email subject"},
+            "body": {"type": "STRING", "description": "Email content"},
+            "title": {"type": "STRING", "description": "Meeting title"},
+            "time": {"type": "STRING", "description": "Meeting time or date"}
+        },
+        "required": ["action"]
+    }
 }
 ]
 
 class JarvisLive:
+
+    # ── Sensitive tools that require PIN re-verification after session timeout ──
+    _SENSITIVE_TOOLS = {
+        "productivity_manager", "file_controller", "cmd_control",
+        "browser_control", "desktop_control", "computer_control",
+    }
+    _SESSION_TIMEOUT_SECONDS = 1800  # 30 minutes
 
     def __init__(self, ui: JarvisUI):
         self.ui: JarvisUI                          = ui
@@ -675,6 +1118,8 @@ class JarvisLive:
         self._pending_open_and_delegate: Optional[dict[str, str]] = None
         self._quick_task_lock = threading.Lock()
         self._audio_settings = load_audio_settings()
+        self._mic_active = True  # FORCE MIC ACTIVE ON BOOT SO VOICE WORKS IMMEDIATELY
+        self._cam_active = bool(self._audio_settings.get("cam_enabled", False))
         self._vad_rising = int(self._audio_settings.get("vad_threshold_rising", 220) or 220)
         self._vad_falling = int(self._audio_settings.get("vad_threshold_falling", 160) or 160)
         self._partial_confidence_min = float(self._audio_settings.get("partial_confidence_min", 0.62) or 0.62)
@@ -682,6 +1127,37 @@ class JarvisLive:
         self._tool_gate_window_seconds = float(self._audio_settings.get("tool_gate_window_seconds", 8.0) or 8.0)
         self._voice_command_armed_until = 0.0
         self._armed_tool_budget = 0
+        self._last_pin_verified_at: float = time.time()  # V4 session timeout
+        self._session_pin_verified: bool = True          # assume verified at boot
+        self._whisper_mode: bool = False                 # Set by wake word detector
+        self.system_tray = None                          # Set by runner() on boot
+        self._wakeword_detector = None                   # Set by runner() on boot
+
+        # Register text callback immediately so UI can send commands from the start
+        self.ui.on_user_text = self._on_user_text
+        
+        self._trigger_engine = TriggerEngine(self._on_trigger_fired)
+        self._trigger_engine.start()
+
+    def _on_trigger_fired(self, action: dict, bypass_voice: bool = False):
+        payload = action.get("payload", "")
+        if action.get("type") == "voice_command" and payload:
+            print(f"[JARVIS] ⚡ Trigger Event: {payload} (Silent: {bypass_voice})")
+            self._arm_command_window(payload)
+            if bypass_voice:
+                self.ui.write_log(f"System Trigger: {payload}")
+                self._on_user_text(payload)
+            else:
+                if self.session and self._loop:
+                    async def _send():
+                        try:
+                            await self.session.send_client_content(
+                                turns={"parts": [{"text": f"SYSTEM EVENT: {payload}. Please analyze and respond to the user immediately."}]},
+                                turn_complete=True
+                            )
+                        except Exception as e:
+                            print(f"[JARVIS] Failed to inject trigger: {e}")
+                    asyncio.run_coroutine_threadsafe(_send(), self._loop)
         self._last_user_transcript = ""
         self._telemetry = TelemetryLogger(BASE_DIR, load_telemetry_settings())
         self._telemetry.set_context(component="main", model=LIVE_MODEL)
@@ -760,6 +1236,13 @@ class JarvisLive:
         self._last_user_transcript = self._sanitize_multilingual_transcript(source_text)
         self._voice_command_armed_until = time.monotonic() + self._tool_gate_window_seconds
         self._armed_tool_budget = 2
+        
+        # Manually trigger the trigger engine to force context accumulation immediately if supported
+        try:
+            if hasattr(self, '_trigger') and hasattr(self._trigger, 'manual_trigger'):
+                self._trigger.manual_trigger(source_text)
+        except Exception as e:
+            print(f"[JARVIS] trigger engine manual_trigger skip: {e}")
 
     def _is_command_window_armed(self) -> bool:
         return time.monotonic() <= self._voice_command_armed_until and self._armed_tool_budget > 0
@@ -859,9 +1342,17 @@ class JarvisLive:
         if not target:
             return None
 
+        # Detect mobile device markers BEFORE stripping helper phrases
+        mobile_markers = ["on mobile", "on phone", "on android", "on ios", "on iphone", "on ipad", "in mobile", "in phone", "in android", "in ios", "in iphone", "my phone", "my mobile"]
+        is_mobile = any(mk in target for mk in mobile_markers)
+
         target = re.split(r"\b(?:for me|please|so you can|so i can)\b", target, maxsplit=1)[0].strip(" .,!?:;\"")
         if not target:
             return None
+
+        # For mobile commands, pass the FULL target (with mobile keywords) to open_app
+        if is_mobile:
+            return {"action": "open_app", "app_name": target}
 
         targets = [piece.strip(" .,!?:;\"") for piece in re.split(r"\s+(?:and|&)\s+|,\s*", target) if piece.strip(" .,!?:;\"")]
         if not targets:
@@ -1036,16 +1527,212 @@ class JarvisLive:
 
         return None
 
-    def _on_user_text(self, text: str):
-        """Called when user types a message in the UI."""
-        text = self._normalize_text_input(text)
-        if not text:
+    def hibernate(self):
+        """Put Kree to sleep."""
+        print("[JARVIS] 💤 Going to sleep mode...")
+        self.ui.hibernate()
+        if hasattr(self, 'system_tray') and self.system_tray:
+            self.system_tray.set_sleeping()
+        try:
+            import winsound
+            winsound.PlaySound('assets/sounds/sleep.wav', winsound.SND_FILENAME | winsound.SND_ASYNC)
+        except: pass
+        if hasattr(self, 'wake_event'):
+            self.wake_event.clear()
+        
+        # Abort the async connection safely if running
+        if self._loop and self.audio_in_queue:
+            self._loop.call_soon_threadsafe(self.audio_in_queue.put_nowait, b"SLEEP_SENTINEL")
+
+    def wake(self, trigger_type="full", whisper=False):
+        """
+        Wake Kree from sleep.
+        
+        Args:
+            trigger_type: "full" (chime + UI + greeting), "partial" (ears only, no UI), "priority" (instant, no greeting)
+            whisper: True if the user spoke quietly — Kree responds quietly
+        """
+        self._whisper_mode = whisper
+        
+        if trigger_type == "partial":
+            # Partial wake: just set the event so WebRTC connects, no UI or chime
+            print("[JARVIS] Partial wake (ears only)")
+            if hasattr(self, 'wake_event'):
+                if not self.wake_event.is_set():
+                    if self._loop:
+                        self._loop.call_soon_threadsafe(self.wake_event.set)
+                    else:
+                        self.wake_event.set()
             return
-        self._trace(TelemetryEvents.USER_TEXT, text=text)
-        # Typed input is considered explicit user intent and arms one tool-execution window.
-        self._arm_command_window(text)
-        print(f"[JARVIS] 💬 Received text command from UI: {text}")
-        low = text.lower()
+
+        # Full wake or priority wake — show the UI
+        print(f"[JARVIS] Waking up... (type={trigger_type}, whisper={whisper})")
+        self.ui.wake()
+        if hasattr(self, 'system_tray') and self.system_tray:
+            self.system_tray.set_active()
+
+        if trigger_type != "priority":
+            # Play pre-cached high-quality AI voice greeting instantly (0ms latency!)
+            try:
+                greeting_mp3 = BASE_DIR / "assets" / "sounds" / "active_greeting.mp3"
+                import os
+                if greeting_mp3.exists() and os.path.getsize(greeting_mp3) > 1000:
+                    import pygame
+                    if not pygame.mixer.get_init():
+                        pygame.mixer.init()
+                    pygame.mixer.music.load(str(greeting_mp3))
+                    pygame.mixer.music.play()
+                else:
+                    raise Exception("Missing MP3")
+            except Exception:
+                # Fallback to standard wake chime if pre-renderer hasn't built it yet
+                try:
+                    import winsound
+                    winsound.PlaySound('assets/sounds/wake.wav', winsound.SND_FILENAME | winsound.SND_ASYNC)
+                except Exception:
+                    pass
+
+        if hasattr(self, 'wake_event'):
+            if not self.wake_event.is_set():
+                if self._loop:
+                    self._loop.call_soon_threadsafe(self.wake_event.set)
+                else:
+                    self.wake_event.set()
+
+    def on_user_text(self, text: str):
+        """Called when user types a message in the UI."""
+        try:
+            logging.debug(f"[UI_TEXT] Processing: {text}")
+            text = self._normalize_text_input(text)
+            if not text:
+                return
+                
+            self.ui.write_log(f"You: {text}")
+            
+            # Typed input is considered explicit user intent and arms one tool-execution window.
+            self._arm_command_window(text)
+            
+            logging.info(f"[UI_TEXT] Command normalized: {text}")
+            low = text.lower()
+            
+            # Update intent
+            if "update kree" in low:
+                logging.debug("[UI_TEXT] matched 'update'")
+                from core.updater import get_pending_update, install_pending_update
+                pending = get_pending_update()
+                if pending.get("available"):
+                    _local_speech_voice(f"Installing update version {pending['version']} now sir. Kree will restart.")
+                    self.ui.write_log(f"Kree: Installing update v{pending['version']}...")
+                    install_pending_update()
+                else:
+                    _local_speech_voice("You're already on the latest version sir.")
+                    self.ui.write_log("Kree: Already on the latest version.")
+                return
+
+            # Sleep intent
+            sleep_triggers = ["go to sleep", "kree sleep", "goodnight kree", "that's all kree", "dismiss"]
+            if any(trigger in low for trigger in sleep_triggers):
+                logging.debug("[UI_TEXT] matched 'sleep'")
+                _local_speech_voice("Sleeping sir.")
+                self.hibernate()
+                return
+
+            # Voice enrollment command
+            if "enroll my voice" in low or "register my voice" in low:
+                logging.debug("[UI_TEXT] matched 'enroll'")
+                detector = getattr(self, '_wakeword_detector', None)
+                if detector:
+                    _local_speech_voice("Recording your voiceprint. Please speak naturally for ten seconds.")
+                    import threading
+                    def _enroll():
+                        try:
+                            import time
+                            time.sleep(2)  # Wait for TTS to finish
+                            if detector.enroll_owner_voice():
+                                _local_speech_voice("Voiceprint saved. I will only respond to your voice now.")
+                            else:
+                                _local_speech_voice("Voiceprint enrollment failed. Please try again.")
+                        except Exception as e:
+                            logging.error(f"[ENROLL] Thread failed: {e}")
+                    threading.Thread(target=_enroll, daemon=True).start()
+                else:
+                    _local_speech_voice("Wake word detector not available.")
+                return
+                
+            # Normalize command prefix (strip 'hey kree', etc)
+            import re
+            stripped_low = re.sub(r'^(hey\s+|ok\s+|okay\s+|please\s+)?(kree|jarvis)?\b[\s,:-]*', '', low).strip()
+            logging.debug(f"[UI_TEXT] Stripped command: {stripped_low}")
+
+            if stripped_low.startswith("open "):
+                logging.info(f"[UI_TEXT] Fast-path detected: {stripped_low}")
+                app_name = text.lower().replace("hey ", "").replace("kree ", "").replace("open ", "").strip()
+                def _open_fast():
+                    try:
+                        loading_msg = f"Kree: Opening {app_name} now..."
+                        self.ui.write_log(loading_msg)
+                        logging.debug(f"[OPEN_FAST] thread started for: {app_name}")
+                        try:
+                            import winsound
+                            winsound.PlaySound("SystemDefault", winsound.SND_ALIAS | winsound.SND_ASYNC)
+                        except: pass
+                        _local_speech_voice("Opening it now.")
+                        
+                        logging.debug("[OPEN_FAST] Calling open_app bridge...")
+                        r = open_app(
+                            parameters={"app_name": app_name},
+                            response=None,
+                            player=self.ui,
+                            session_memory=None,
+                        )
+                        logging.info(f"[OPEN_FAST] Result: {r}")
+                        self.ui.write_log(f"Kree: {r}")
+                    except Exception as e:
+                        logging.error(f"[OPEN_FAST] Error: {e}")
+                
+                threading.Thread(target=_open_fast, daemon=True).start()
+                return
+
+        except Exception as e:
+            logging.error(f"[UI_TEXT] Fatal crash during text processing: {e}")
+            logging.error(traceback.format_exc())
+
+        if stripped_low.startswith("close "):
+            app_name = text.lower().replace("hey ", "").replace("kree ", "").replace("close ", "").strip()
+            def _close_fast():
+                try:
+                    import psutil
+                    self.ui.write_log(f"Kree: Closing {app_name} now...")
+                    APP_MAP = {
+                        "chrome": "chrome.exe",
+                        "spotify": "Spotify.exe",
+                        "vscode": "Code.exe",
+                        "discord": "Discord.exe",
+                        "notepad": "notepad.exe",
+                        "youtube": "chrome.exe", 
+                        "github": "chrome.exe"
+                    }
+                    process_name = APP_MAP.get(app_name.lower(), app_name)
+                    
+                    killed = False
+                    for proc in psutil.process_iter(['name', 'pid']):
+                        try:
+                            if proc.info['name'] and process_name.lower() in proc.info['name'].lower():
+                                proc.terminate()
+                                killed = True
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+                            
+                    if killed:
+                        _local_speech_voice(f"Closed {app_name} sir.")
+                        self.ui.write_log(f"Kree: Closed {app_name}.")
+                    else:
+                        _local_speech_voice(f"Could not find {app_name} running sir.")
+                        self.ui.write_log(f"Kree: Couldn't find {app_name} running.")
+                except Exception as e:
+                    self.ui.write_log(f"Kree: Fast-path close error: {e}")
+            threading.Thread(target=_close_fast, daemon=True).start()
+            return
 
         if self._resolve_pending_choice(text):
             return
@@ -1121,6 +1808,14 @@ class JarvisLive:
                                 player=self.ui,
                                 session_memory=None,
                             )
+                            if isinstance(r, str) and r.startswith("__BROADCAST_INTENT__"):
+                                target = r.split(":", 1)[1]
+                                if hasattr(self, 'mobile_bridge') and hasattr(self, '_loop'):
+                                    asyncio.run_coroutine_threadsafe(
+                                        self.mobile_bridge.broadcast({"type": "intent", "action": "open_app", "target": target}),
+                                        self._loop
+                                    )
+                                r = f"Opening {target} on your mobile device, sir."
                         else:
                             r = openapps_automation(
                                 parameters={
@@ -1215,33 +1910,67 @@ class JarvisLive:
             threading.Thread(target=_macro_generic, daemon=True).start()
             return
 
-        self.speak(text)
-
+        if getattr(self, "_loop", None) and getattr(self, "out_queue", None):
+            self._loop.call_soon_threadsafe(self.out_queue.put_nowait, {"text": text})
+        else:
+            self.ui.write_log("SYS: Gemini Live connection not active.")
+            
     def speak(self, text: str):
-        """Thread-safe speak — any thread can call this."""
+        """Thread-safe chunked speak — prevents Gemini Live TTS glitches on long text."""
         loop = self._loop
         session = self.session
         if not loop or not session:
+            _local_speech_voice(text)
             return
-        assert loop is not None
+        
+        # Split text logic (max 200 chars, try to split at sentences)
+        import re
+        chunks = []
+        current = ""
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+        for s in sentences:
+            if len(current) + len(s) <= 200:
+                current += s + " "
+            else:
+                if current.strip(): chunks.append(current.strip())
+                if len(s) > 200:
+                    for i in range(0, len(s), 195):
+                        chunks.append(s[i:i+195])
+                    current = ""
+                else:
+                    current = s + " "
+        if current.strip():
+            chunks.append(current.strip())
+            
+        if not chunks: return
+        
+        async def _chunked_sender():
+            for i, chunk in enumerate(chunks):
+                # Wait for previous chunk audio to finish playing
+                if i > 0:
+                    import asyncio
+                    while self.bot_is_speaking or not self.sync_audio_out_queue.empty():
+                        await asyncio.sleep(0.1)
+                
+                try:
+                    await session.send_client_content(
+                        turns={"parts": [{"text": chunk}]},
+                        turn_complete=True
+                    )
+                except Exception as e:
+                    print(f"[JARVIS] ⚠️ speak() failed on chunk: {e}")
+        
         try:
             current_loop = asyncio.get_running_loop()
-        except RuntimeError:
-            current_loop = None
-
-        try:
-            coro = session.send_client_content(
-                turns={"parts": [{"text": text}]},
-                turn_complete=True
-            )
             if current_loop is loop:
-                loop.create_task(coro)
+                loop.create_task(_chunked_sender())
             else:
-                asyncio.run_coroutine_threadsafe(coro, loop)
-        except Exception as e:
-            print(f"[JARVIS] ⚠️ speak() failed: {e}")
+                asyncio.run_coroutine_threadsafe(_chunked_sender(), loop)
+        except RuntimeError:
+            asyncio.run_coroutine_threadsafe(_chunked_sender(), loop)
     
-    def _build_config(self) -> types.LiveConnectConfig:
+    def _build_config(self) -> Any:
+        _, types = _ensure_genai_sdk()
         from datetime import datetime 
 
         memory  = load_memory()
@@ -1249,18 +1978,17 @@ class JarvisLive:
 
         # Prioritize Language Constraints at the very top of the logic
         sys_prompt = (
-            "<BILINGUAL_PROTOCOL>\n"
-            "USER_LANGUAGES: [Indian English (en-IN), Hindi (hi-IN), Telugu (te-IN), Gujarati (gu-IN), Sinhala (si-LK), Tamil (ta-IN)]\n"
-            "USER_ACCENT: Expect the user to have an Indian subcontinent accent. They may pronounce 'v' as 'w' or use retroflex 't' and flat vowels.\n"
-            "YOUR_VOICE: Use a crisp, professional American accent for all your spoken responses.\n"
+            "<STRICT_ENGLISH_PROTOCOL>\n"
+            "YOUR_VOICE & LANGUAGE: You MUST ALWAYS speak and reply in English ONLY.\n"
+            "USER_INPUT: The user may speak with an Indian subcontinent accent or use broken English. Understand their intent but NEVER reply or output in Vernacular scripts (like Malayalam, Hindi, Tamil) or any language other than English.\n"
             "ADDRESSING: Respond to direct user commands without requiring a wake phrase.\n"
             "STRICT_MODE: ON\n"
             "INSTRUCTIONS:\n"
-            "1. You are a multilingual assistant for South Asian users. Understand Indian-accented English, Hindi, Telugu, Gujarati, Sinhala, and Tamil.\n"
-            "2. Ignore random static/noise, but do not ignore valid South Asian language speech.\n"
-            "3. Reply in the same language user spoke whenever possible.\n"
+            "1. You are Kree, an advanced, highly capable AI assistant for a power user.\n"
+            "2. Ignore random static/noise.\n"
+            "3. ALWAYS reply in crisp, professional American English.\n"
             "4. Be confident — just respond to commands, do not explain your language limitations.\n"
-            "</BILINGUAL_PROTOCOL>\n\n"
+            "</STRICT_ENGLISH_PROTOCOL>\n\n"
         )
         sys_prompt += _load_system_prompt()
 
@@ -1291,6 +2019,12 @@ class JarvisLive:
         else:
             sys_prompt = time_ctx + sys_prompt
 
+        try:
+            from memory.config_manager import load_audio_settings # type: ignore[import]
+            voice_name_config = load_audio_settings().get("kree_voice", "Kore")
+        except Exception:
+            voice_name_config = "Kore"
+
         return types.LiveConnectConfig(
             response_modalities=["AUDIO"],
             output_audio_transcription={},
@@ -1298,28 +2032,38 @@ class JarvisLive:
             system_instruction=sys_prompt,
             tools=[{"function_declarations": TOOL_DECLARATIONS}],
             session_resumption=types.SessionResumptionConfig(),
-            realtime_input_config=types.RealtimeInputConfig(
-                automatic_activity_detection=types.AutomaticActivityDetection(
-                    disabled=True  # Explicit activity markers are sent by the client gate.
-                )
-            ),
+            # Server-side VAD enabled — Gemini handles turn detection for instant response
             speech_config=types.SpeechConfig(
+                language_code="en-US",
                 voice_config=types.VoiceConfig(
                     prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                        voice_name="Kore"  # 'Kore' is a standard American female voice
+                        voice_name=voice_name_config
                     )
                 ),
             ),
         )
 
-    async def _execute_tool(self, fc) -> types.FunctionResponse:
+    async def _execute_tool(self, fc) -> Any:
+        _, types = _ensure_genai_sdk()
         name = fc.name
         args = dict(fc.args or {})
 
         # Normalize common free-text fields to avoid Unicode drift between ASR, model, and tool layer.
-        for k in ("target", "query", "app", "app_name", "description", "task", "prompt"):
+        import core.sanitizer as sanitizer
+        for k in ("target", "query", "app", "app_name", "description", "task", "prompt", "text", "command"):
             if k in args and args[k] is not None:
-                args[k] = self._normalize_text_input(args[k])
+                val = self._normalize_text_input(args[k])
+                
+                # Sanitize Command Checking
+                safe_val, err = sanitizer.sanitize_command(val)
+                if err:
+                    print(f"[JARVIS] 🛡️ Security Block: {err}")
+                    return types.FunctionResponse(
+                        id=fc.id,
+                        name=name,
+                        response={"result": err},
+                    )
+                args[k] = safe_val
 
         if name == "downloader_updater" and "target" in args:
             target_val = str(args.get("target") or "").strip()
@@ -1357,6 +2101,53 @@ class JarvisLive:
         # Consume the window only for gated tools so safe app launches are not blocked.
         if name in dangerous_tools:
             self._consume_command_window()
+
+        # ── V4 SESSION TIMEOUT: Re-verify PIN for sensitive tools ─────────────
+        if name in self._SENSITIVE_TOOLS:
+            elapsed = time.time() - self._last_pin_verified_at
+            if elapsed > self._SESSION_TIMEOUT_SECONDS:
+                self._session_pin_verified = False
+                print(f"[JARVIS] 🔒 Tool blocked: {name} (session timeout — PIN needed)")
+                self._trace(TelemetryEvents.TOOL_BLOCKED, f"Session expired for {name}", tool=name, reason="session_timeout")
+
+                # Trigger the PIN challenge overlay on the UI
+                try:
+                    self.ui._api.request_pin_challenge()
+                except Exception:
+                    pass
+                try:
+                    _local_speech_voice("Just confirming it's you. What's your PIN?")
+                except Exception:
+                    pass
+
+                # Poll for the flag file written by verify_session_pin in ui.py
+                pin_flag = BASE_DIR / "memory" / "session_pin_ok.json"
+                waited = 0
+                while waited < 120:  # Wait up to 2 minutes for PIN
+                    if pin_flag.exists():
+                        try:
+                            data = json.loads(pin_flag.read_text())
+                            self._last_pin_verified_at = data.get("verified_at", time.time())
+                            self._session_pin_verified = True
+                            pin_flag.unlink(missing_ok=True)
+                            print("[JARVIS] ✅ Session re-verified via PIN. Continuing tool execution.")
+                            break  # PIN accepted — fall through to run the tool
+                        except Exception:
+                            pass
+                    await asyncio.sleep(1)
+                    waited += 1
+
+                if not self._session_pin_verified:
+                    msg = (
+                        f"Session verification timed out. "
+                        f"Please verify your PIN and try again."
+                    )
+                    return types.FunctionResponse(
+                        id=fc.id,
+                        name=name,
+                        response={"result": msg},
+                    )
+
         self._trace(TelemetryEvents.TOOL_CALL, f"Tool call: {name}", tool=name, args=args)
 
         print(f"[JARVIS] 🔧 TOOL: {name}  ARGS: {args}")
@@ -1370,13 +2161,35 @@ class JarvisLive:
             self.ui.push_action_log(f"App: {app_ctx}")
         if cmd_ctx:
             self.ui.push_action_log(f"Command: {cmd_ctx[:180]}")
+        
+        self._broadcast_mobile_state('executing')
 
         try:
-            if name == "open_app":
+            if name == "trigger_macro":
+                try:
+                    import core.automations as autos
+                    import core.execution_engine as engine
+                    chain_name = args.get("chain_name")
+                    chain_tasks = autos.get_chain(chain_name)
+                    if chain_tasks:
+                        # Launch concurrently but do not block the entire event loop so Gemini can still respond instantly
+                        loop.create_task(engine.run_parallel_tasks(chain_tasks, self.session))
+                        result = f"Successfully triggered macro chain: {chain_name}."
+                    else:
+                        result = f"Failed to find a configured chain named '{chain_name}'."
+                except Exception as e:
+                    result = f"Failed to execute macro: {e}"
+
+            elif name == "open_app":
                 r = await loop.run_in_executor(
                     None, functools.partial(open_app, parameters=args, response=None, player=self.ui)  # type: ignore[arg-type]
                 )
-                if isinstance(r, str) and r.strip():
+                if isinstance(r, str) and r.startswith("__BROADCAST_INTENT__"):
+                    target = r.split(":")[1]
+                    if hasattr(self, 'mobile_bridge'):
+                        await self.mobile_bridge.broadcast({"type": "intent", "action": "open_app", "target": target})
+                    result = f"Sent mobile intent to open {target}."
+                elif isinstance(r, str) and r.strip():
                     result = r
                 else:
                     result = f"Opened {args.get('app_name')} successfully."
@@ -1418,6 +2231,18 @@ class JarvisLive:
                 )
                 result = r or "Download/update action completed."
 
+            elif name == "turboquant_helper":
+                r = await loop.run_in_executor(
+                    None, functools.partial(  # type: ignore[arg-type]
+                        turboquant_helper,
+                        parameters=args,
+                        response=None,
+                        player=self.ui,
+                        session_memory=None,
+                    )
+                )
+                result = r or "TurboQuant helper completed."
+
             elif name == "session_trace":
                 trace_action = str(args.get("action", "")).strip().lower()
                 trace_label = str(args.get("label", "session_trace")).strip() or "session_trace"
@@ -1450,6 +2275,39 @@ class JarvisLive:
                     None, functools.partial(file_controller, parameters=args, player=self.ui)  # type: ignore[arg-type]
                 )
                 result = r or "File operation completed."
+
+            elif name == "productivity_manager":
+                r = await loop.run_in_executor(
+                    None, functools.partial(productivity_manager, parameters=args, player=self.ui)  # type: ignore[arg-type]
+                )
+                result = r or "Productivity task completed."
+
+            elif name == "smart_trigger":
+                try:
+                    action_type = args.get("action", "")
+                    if action_type == "create":
+                        # We must send it to the trigger engine instance
+                        self._trigger_engine.add_trigger({
+                            "id": f"trig_{int(time.time())}",
+                            "name": args.get("name", "Unnamed Trigger"),
+                            "type": args.get("trigger_type"),
+                            "condition": {
+                                "metric": args.get("metric"),
+                                "operator": args.get("operator"),
+                                "value": args.get("value")
+                            },
+                            "action": {"type": "voice_command", "payload": args.get("action_to_take")},
+                            "silent": args.get("silent", True),
+                            "cooldown_seconds": 300
+                        })
+                        result = f"Created trigger: {args.get('name')}"
+                    elif action_type == "remove":
+                        self._trigger_engine.remove_trigger(args.get("id_to_remove", ""))
+                        result = "Trigger removed."
+                    else:
+                        result = "Invalid action for smart_trigger."
+                except Exception as e:
+                    result = f"Failed to modify trigger: {e}"
 
             elif name == "send_message":
                 r = await loop.run_in_executor(
@@ -1573,16 +2431,32 @@ class JarvisLive:
         finally:
             self.ui.push_action_log(f"Finished {name}")
             self.ui.hide_action_loading()
+            
+        result_str = str(result)
+        
+        # --- STRICT MOBILE CROSS-ROUTING ABORT ---
+        if "__BROADCAST_INTENT__" in result_str:
+            import re
+            m = re.search(r'__BROADCAST_INTENT__:([A-Za-z0-9_.-]+)', result_str)
+            target = m.group(1) if m else "app"
+            if hasattr(self, 'mobile_bridge') and hasattr(self, '_loop'):
+                asyncio.run_coroutine_threadsafe(
+                    self.mobile_bridge.broadcast({"type": "intent", "action": "open_app", "target": target}),
+                    self._loop
+                )
+            result_str = "Successfully executed on mobile device."
+            
+        if "failed" not in result_str.lower():
+            self._trace(TelemetryEvents.TOOL_RESULT, result_str, tool=name, status="ok")
 
-        if "failed" not in str(result).lower():
-            self._trace(TelemetryEvents.TOOL_RESULT, str(result), tool=name, status="ok")
+        print(f"[JARVIS] 📤 {name} → {result_str[:80]}")  # type: ignore[index]
 
-        print(f"[JARVIS] 📤 {name} → {str(result)[:80]}")  # type: ignore[index]
+        self._broadcast_mobile_state('listening')
 
         return types.FunctionResponse(
             id=fc.id,
             name=name,
-            response={"result": result}
+            response={"result": result_str}
         )
 
     async def _send_realtime(self):
@@ -1593,6 +2467,9 @@ class JarvisLive:
                 await asyncio.sleep(0.1)
                 continue
             msg = await self.out_queue.get()  # type: ignore[union-attr]
+            if isinstance(msg, bytes) and msg == b"SLEEP_SENTINEL":
+                raise ConnectionAbortedError("Sleep Triggered")
+                
             if self.session is None:
                 continue
             try:
@@ -1659,166 +2536,30 @@ class JarvisLive:
             print(f"[JARVIS] ❌ Mic open failed: {e}")
             return
 
-        import collections
         try:
-            import math
-            import array
-
-            _empty_chunks = 0
-            _rms_history = []
-            _gate_timer: int = 0
-
-            # VAD Properties
-            _ui_speaking_state: bool = False
-            _pre_roll = collections.deque(maxlen=10)  # 640ms pre-roll buffer (keeps it fast)
-            _rms_window = collections.deque(maxlen=3)  # Smoothing window
-            _rms_history = collections.deque(maxlen=50)  # Volume bar history
-            _dynamic_thresh: float = 500.0
-            _prev_sample: int = 0
-            _dc_offset: float = 0.0
-            _alpha: float = 0.85
-            _trigger_count: int = 0
-            _ambient_variance: float = 50.0
-            _agc_gain = 1.0
-            print("[JARVIS] 🎙️ SMART MIC MODE: variance-gated speech filtering")
-
+            print("[JARVIS] 🎙️ STREAMING MIC MODE: Server VAD enabled (instant response)")
             while True:
                 data = await asyncio.to_thread(
                     stream.read, CHUNK_SIZE, exception_on_overflow=False
                 )
 
-                raw_data = data
-                rms = 0
-                try:
-                    samples = array.array('h', data)
+                # Echo suppression: if Kree is talking, zero the mic to prevent loop
+                if getattr(self, "bot_is_speaking", False):
+                    self._bot_speaking_cooldown = 15  # Extend mute for ~500ms after speech ends (acoustic tail)
 
-                    for i in range(len(samples)):  # type: ignore[arg-type]
-                        current = int(samples[i])
-                        _dc_offset = 0.999 * _dc_offset + 0.001 * current
-                        centered = current - int(_dc_offset)
-                        filtered = centered - int(_alpha * _prev_sample)
-                        _prev_sample = centered
-                        if filtered > 32767:
-                            filtered = 32767
-                        elif filtered < -32768:
-                            filtered = -32768
-                        samples[i] = filtered
-
-                    s_list = list(samples)
-                    s_len = len(s_list)
-                    rms = math.sqrt(sum(s * s for s in s_list) / s_len) if s_len > 0 else 0
-                    _rms_history.append(rms)
-                    _rms_window.append(rms)
-                except Exception:
-                    pass
-
-                s_list_var = list(_rms_window)
-                rms_count = len(s_list_var)
-                smoothed_rms = sum(s_list_var) / float(rms_count) if rms_count > 0 else 0
-                variance = 0.0
-                if rms_count > 1:
-                    avg = smoothed_rms
-                    variance = math.sqrt(sum((x - avg) ** 2 for x in s_list_var) / float(rms_count))
-
-                s_list_hist = list(_rms_history)
-                hist_count = len(s_list_hist)
-                if hist_count >= 23:
-                    peak = max(_rms_history)
-                    if peak > 150:
-                        bars = [" ", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
-                        bar = bars[min(7, int(peak / 2000 * 7))]
-                        print(f"   [MIC VOL] {bar} (Peak: {int(peak)} | Thresh: {int(_dynamic_thresh)} | Var: {int(variance)})")
-                    _rms_history.clear()
-
-                send_data = raw_data
-
-                if not getattr(self.ui, "_mic_active", True):
-                    send_data = b'\x00' * len(raw_data)  # type: ignore[arg-type]
-                    _gate_timer = 0
-                elif getattr(self, "bot_is_speaking", False):
-                    if variance > max(400.0, _ambient_variance * 15.0):
-                        pass
-                    else:
-                        send_data = b'\x00' * len(raw_data)  # type: ignore[arg-type]
-                        _gate_timer = 0
+                cooldown = getattr(self, "_bot_speaking_cooldown", 0)
+                if cooldown > 0:
+                    self._bot_speaking_cooldown = cooldown - 1
+                    send_data = bytes(len(data))
+                elif not getattr(self.ui, "_mic_active", True):
+                    send_data = bytes(len(data))
                 else:
-                    if variance < 150:
-                        _ambient_variance = 0.99 * _ambient_variance + 0.01 * variance
-                        _ambient_variance = max(10.0, min(500.0, _ambient_variance))
+                    send_data = data
 
-                    trigger_threshold = max(150.0, _ambient_variance * 3.0)
-                    is_speech = variance >= trigger_threshold
-
-                    if is_speech:
-                        _trigger_count = int(_trigger_count) + 1
-                        if variance > max(300.0, _ambient_variance * 6.0):
-                            _trigger_count = 2
-
-                        if _trigger_count >= 2:
-                            q = self.out_queue
-                            if _gate_timer == 0 and q is not None:
-                                try:
-                                    q.put_nowait({"type": "activity_start"})
-                                    if variance < 400:
-                                        q.put_nowait({"type": "emotion", "text": "System Note: The user is speaking softly or whispering. Keep your reply extremely soft, brief, and concise."})
-                                    elif variance > 4000:
-                                        q.put_nowait({"type": "emotion", "text": "System Note: The user is speaking loudly and urgently. Respond urgently."})
-                                except asyncio.QueueFull:
-                                    pass
-
-                                while _pre_roll:
-                                    try:
-                                        q.put_nowait({"data": _pre_roll.popleft(), "mime_type": f"audio/pcm;rate={SEND_SAMPLE_RATE}"})
-                                    except asyncio.QueueFull:
-                                        pass
-                            _gate_timer = 8
-                    else:
-                        _trigger_count = 0
-
-                    if _gate_timer > 0:
-                        _gate_timer -= 1  # type: ignore[operator]
-                        q2 = self.out_queue
-                        if _gate_timer == 0 and q2 is not None:
-                            try:
-                                q2.put_nowait({"type": "activity_end"})
-                            except asyncio.QueueFull:
-                                pass
-
-                        target_rms = 1500.0
-                        current_rms = float(smoothed_rms) if smoothed_rms > 10 else 10.0
-                        gain = target_rms / current_rms
-                        if gain > 4.0:
-                            gain = 4.0
-                        if gain < 0.5:
-                            gain = 0.5
-                        _agc_gain = gain
-
-                        if abs(_agc_gain - 1.0) > 0.1:
-                            for i in range(len(samples)):  # type: ignore[arg-type]
-                                val = int(samples[i] * _agc_gain)
-                                if val > 32767:
-                                    val = 32767
-                                elif val < -32768:
-                                    val = -32768
-                                samples[i] = val
-
-                        send_data = samples.tobytes()
-                    else:
-                        _pre_roll.append(raw_data)
-                        send_data = b'\x00' * len(raw_data)  # type: ignore[arg-type]
-
-                _is_talking = bool(_gate_timer > 0)
-                if _is_talking != _ui_speaking_state:
-                    _ui_speaking_state = _is_talking
-                    try:
-                        self.ui._eval(f"setSpeaking({'true' if _is_talking else 'false'})")
-                    except Exception:
-                        pass
-
-                # Send to Gemini
+                # Send raw stream to Gemini
                 if self.out_queue is not None:
                     try:
-                        self.out_queue.put_nowait({"data": send_data, "mime_type": f"audio/pcm;rate={SEND_SAMPLE_RATE}"})  # type: ignore[union-attr]
+                        self.out_queue.put_nowait({"data": send_data, "mime_type": f"audio/pcm;rate={SEND_SAMPLE_RATE}"})
                     except asyncio.QueueFull:
                         pass
 
@@ -2005,6 +2746,15 @@ class JarvisLive:
                                 full_out = " ".join(out_buf).strip()
                                 if full_out:
                                     self.ui.write_log(f"Kree: {full_out}")
+                                    if hasattr(self, 'mobile_bridge') and self.mobile_bridge.server:
+                                        try:
+                                            asyncio.create_task(self.mobile_bridge.broadcast({
+                                                "type": "chat",
+                                                "sender": "KREE",
+                                                "text": full_out
+                                            }))
+                                        except Exception:
+                                            pass
                             out_buf = []
 
                             if full_in and len(full_in) > 5:
@@ -2013,13 +2763,28 @@ class JarvisLive:
                                     args=(full_in, full_out),
                                     daemon=True
                                 ).start()
+                                
+                                try:
+                                    import memory.history_manager as hist
+                                    # Parse out recently executed tools to add them visually into the memory text limit
+                                    executed_tools = []
+                                    if response.tool_call:
+                                        for fc in response.tool_call.function_calls:
+                                            executed_tools.append(fc.name)
+                                    hist.save_turn(full_in, full_out, tools=executed_tools)
+                                except Exception as e:
+                                    print(f"[JARVIS] ⚠️ History log error: {e}")
 
                     if response.tool_call:
-                        fn_responses = []
+                        # Print all tools being called
                         for fc in response.tool_call.function_calls:
                             print(f"[JARVIS] 📞 Tool call: {fc.name}")
-                            fr = await self._execute_tool(fc)
-                            fn_responses.append(fr)
+                        
+                        # Execute all tools concurrently (Parallel Execution)
+                        fn_responses = list(await asyncio.gather(
+                            *[self._execute_tool(fc) for fc in response.tool_call.function_calls]
+                        ))
+
                         if self.session is not None:
                             await self.session.send_tool_response(
                                 function_responses=fn_responses
@@ -2066,6 +2831,7 @@ class JarvisLive:
                         break
 
                 self.bot_is_speaking = True
+                self._broadcast_mobile_state('speaking')
                 try:
                     stream.write(chunk)
                 except Exception as e:
@@ -2074,6 +2840,7 @@ class JarvisLive:
                 
                 if self.sync_audio_out_queue.empty():
                     self.bot_is_speaking = False
+                    self._broadcast_mobile_state('listening')
         except Exception as e:
             if "429" not in str(e):
                 pass
@@ -2114,17 +2881,288 @@ class JarvisLive:
                 print(f"[JARVIS] ❌ Play error: {e}")
             raise
 
+    def _broadcast_mobile_state(self, state):
+        """Thread-safe push of Kree's state to all connected mobile clients."""
+        try:
+            if hasattr(self, 'mobile_bridge') and self.mobile_bridge and self._loop:
+                asyncio.run_coroutine_threadsafe(
+                    self.mobile_bridge.broadcast_state(state),
+                    self._loop
+                )
+        except Exception:
+            pass
+
+    async def _proactive_check_loop(self):
+        """Silently monitors user activity. Triggers Kree if dormant."""
+        print("[JARVIS] ⏱️ Proactive Monitor started (60s timer)")
+        
+        while True:
+            # Random jitter to make it feel organic, but base is 60s for dev
+            await asyncio.sleep(10)
+            
+            if not self.session:
+                continue
+                
+            last_turn = getattr(self, "_last_user_turn", time.time())
+            dormant_time = time.time() - last_turn
+            
+            # Dev mode: 60s. Prod: 1800s. Timeouts.
+            AUTO_SLEEP_TIMEOUT = 300  # 5 minutes
+            if dormant_time > getattr(self._audio_settings, 'proactive_heartbeat', 60):
+                if dormant_time > AUTO_SLEEP_TIMEOUT and self.wake_event.is_set():
+                    print(f"[JARVIS] ⏱️ Inactive for 5 mins. Auto-sleeping.")
+                    try:
+                        import pyttsx3
+                        _local_speech_voice("Going to sleep sir, call me when you need me.")
+                    except: pass
+                    self.hibernate()
+                    
+                elif not getattr(self, "bot_is_speaking", False) and getattr(self.ui, "_mic_active", True):
+                    print(f"[JARVIS] ⏱️ Dormant for {int(dormant_time)}s. Firing proactive check-in!")
+                    try:
+                        await self.session.send(
+                            input="[SYSTEM OVERRIDE] The user has been quiet for a while. Proactively check in with them naturally and ask how the session is going. Be extremely brief."
+                        )
+                        # Reset timer so it doesn't spam
+                        self._last_user_turn = time.time()
+                    except Exception as e:
+                        print(f"[JARVIS] ⚠️ Proactive fire fail: {e}")
+
     async def run(self):
+        genai, _ = _ensure_genai_sdk()
         client = genai.Client(
             api_key=_get_api_key(),
             http_options={"api_version": "v1beta"}
         )
+        from memory.config_manager import load_audio_settings, load_telemetry_settings
+        audio_settings = load_audio_settings()
+        telemetry_settings = load_telemetry_settings()
 
-        self._welcomed = False # Initialize welcome guard
+
+
+        # Define internal bridge callbacks
+        _mobile_cmd_dedup = set()
+        def on_mobile_command(text: str):
+            # Deduplicate rapid-fire commands
+            import time as _t
+            key = text.strip().lower() + str(int(_t.time()))
+            if key in _mobile_cmd_dedup:
+                return
+            _mobile_cmd_dedup.add(key)
+            if len(_mobile_cmd_dedup) > 50:
+                _mobile_cmd_dedup.clear()
+            print(f"[JARVIS] 📱 Mobile Command: {text}")
+            if hasattr(self, '_on_user_text'):
+                try:
+                    self._on_user_text(text)
+                except Exception as e:
+                    print(f"[JARVIS] ⚠️ Mobile command error: {e}")
+
+        def on_mobile_connect(pinfo):
+            try:
+                ip = pinfo[0] if isinstance(pinfo, tuple) else str(pinfo)
+                js_str = f'''try{{
+                    var l=document.getElementById("kree-connect-label");if(l)l.innerText="📱 KREE MOBILE LINKED";
+                    var u=document.getElementById("kree-connect-url");if(u)u.innerText="Telemetry stream active";
+                    var i=document.getElementById("kree-connect-qr-loading");if(i){{i.innerText="check_circle";i.classList.remove("text-primary/30","animate-pulse");i.classList.add("text-primary","flex");i.style.fontSize="80px";}};
+                    var q=document.getElementById("kree-connect-qr");if(q)q.style.display="none";
+                    var bs=document.getElementById("phone-bridge-status");if(bs){{bs.innerText="BRIDGE ONLINE ({ip})";bs.style.color="#00DC82";}};
+                }}catch(e){{}}'''
+                self.ui._eval(js_str)
+            except Exception:
+                pass
+
+        def on_quick_action(action: str):
+            if action == 'lock': self.ui.lock_desktop()
+            elif action == 'sleep': self.ui.sleep_desktop()
+            elif action == 'mute': self.ui.mute_desktop()
+            elif action == 'screenshot': self.ui.take_screenshot()
+
+        def on_clipboard_sync(content: str):
+            self.ui.set_clipboard(content)
+
+        import os
+        _file_transfers = {}
+        def on_file_transfer(data: dict):
+            direction = data.get('direction', '')
+            action = data.get('action', '')
+
+            desktop_dir = os.path.join(os.path.expanduser("~"), "Desktop", "Kree Bridge")
+            os.makedirs(desktop_dir, exist_ok=True)
+
+            # New single-blob format from rebuilt PWA
+            if direction == 'phone_to_desktop' and data.get('data'):
+                filename = data.get('filename', f"{int(time.time())}.file")
+                try:
+                    import base64
+                    filepath = os.path.join(desktop_dir, filename)
+                    with open(filepath, 'wb') as f:
+                        f.write(base64.b64decode(data['data']))
+                    print(f"[JARVIS] ✅ File received from mobile: {filepath} ({data.get('size', 0)} bytes)")
+                except Exception as e:
+                    print(f"[JARVIS] ❌ File save failed: {e}")
+                return
+
+            # Legacy chunked format
+            file_id = data.get('fileId')
+            if not file_id: return
+
+            if action == 'start':
+                filename = data.get('name', f"{int(time.time())}.file")
+                filepath = os.path.join(desktop_dir, filename)
+                _file_transfers[file_id] = {'path': filepath, 'chunks': []}
+
+            elif action == 'chunk':
+                if file_id in _file_transfers:
+                    _file_transfers[file_id]['chunks'].append((data.get('index', 0), data.get('data', '')))
+
+            elif action == 'complete':
+                if file_id in _file_transfers:
+                    info = _file_transfers.pop(file_id)
+                    chunks = sorted(info['chunks'], key=lambda x: x[0])
+                    try:
+                        import base64
+                        with open(info['path'], 'wb') as f:
+                            for _, b64_data in chunks:
+                                f.write(base64.b64decode(b64_data))
+                        print(f"[JARVIS] ✅ Saved {info['path']}")
+                    except Exception as e:
+                        print(f"[JARVIS] ❌ File save failed: {e}")
+
+        def on_notes_sync(notes: list):
+            # Pass notes to UI for rendering
+            try:
+                import json
+                encoded = json.dumps(notes).replace("'", "\\'")
+                self.ui._eval(f"try{{ renderSyncedNotes('{encoded}'); }}catch(e){{}}")
+            except Exception:
+                pass
+
+        def on_contacts_sync(contacts: list):
+            # Pass contacts to UI for rendering
+            try:
+                import json
+                encoded = json.dumps(contacts).replace("'", "\\'")
+                self.ui._eval(f"try{{ renderSyncedContacts('{encoded}'); }}catch(e){{}}")
+            except Exception:
+                pass
+
+        # Start Mobile Bridge natively in background
+        from mobile_bridge import KreeMobileBridge
+        self.mobile_bridge = KreeMobileBridge(
+            port=8443,
+            on_command_callback=on_mobile_command,
+            on_connect_callback=on_mobile_connect
+        )
+        self.mobile_bridge.on_quick_action_callback = on_quick_action
+        self.mobile_bridge.on_clipboard_callback = on_clipboard_sync
+        self.mobile_bridge.on_file_transfer_callback = on_file_transfer
+        self.mobile_bridge.on_notes_sync_callback = on_notes_sync
+        self.mobile_bridge.on_contacts_sync_callback = on_contacts_sync
+        
+        # Mobile mic → Kree audio pipeline
+        def on_mobile_audio(audio_bytes):
+            """Receives raw audio from mobile mic and pushes to Gemini."""
+            if self.out_queue and not self.bot_is_speaking:
+                try:
+                    self.out_queue.put_nowait({
+                        "data": audio_bytes,
+                        "mime_type": "audio/webm;codecs=opus"
+                    })
+                except Exception:
+                    pass
+        self.mobile_bridge.on_audio_callback = on_mobile_audio
+
+        self._loop = asyncio.get_event_loop()
+        self.ui.mobile_bridge = self.mobile_bridge
+        self.ui._loop = self._loop
+        try:
+            await self.mobile_bridge.start()
+        except OSError:
+            print("[JARVIS] ⚠️ Mobile Bridge port 8443 already in use. Skipping...")
+
+        # ── PWA Server Auto-Start ────────────────────────────────────────
+        try:
+            from serve_pwa import start_pwa_server_background, get_pwa_url, get_server_status
+            pwa_url, pwa_error = start_pwa_server_background()
+            if pwa_url:
+                self._trace(TelemetryEvents.SESSION_INIT, f"PWA server started: {pwa_url}")
+                # Generate QR code and push to UI
+                try:
+                    import qrcode
+                    import io
+                    qr = qrcode.QRCode(version=1, box_size=6, border=2)
+                    qr.add_data(pwa_url)
+                    qr.make(fit=True)
+                    qr_img = qr.make_image(fill_color="#00DC82", back_color="#0e0e10")
+                    buf = io.BytesIO()
+                    qr_img.save(buf, format='PNG')
+                    qr_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+                    qr_js = f'''try{{
+                        var qrEl=document.getElementById("kree-connect-qr");
+                        if(qrEl){{qrEl.src="data:image/png;base64,{qr_b64}";qrEl.style.display="block";}}
+                        var loadEl=document.getElementById("kree-connect-qr-loading");
+                        if(loadEl)loadEl.style.display="none";
+                        var urlEl=document.getElementById("kree-connect-url");
+                        if(urlEl)urlEl.innerText="{pwa_url}";
+                    }}catch(e){{}}'''
+                    self.ui._eval(qr_js)
+                except ImportError:
+                    print("[KREE PWA] qrcode library not installed. Run: pip install qrcode[pil]")
+                except Exception as e:
+                    print(f"[KREE PWA] QR code generation failed: {e}")
+            elif pwa_error:
+                print(f"[KREE PWA] ⚠️ {pwa_error}")
+                err_js = f'''try{{
+                    var urlEl=document.getElementById("kree-connect-url");
+                    if(urlEl){{urlEl.innerText="{pwa_error}";urlEl.style.color="#ff716c";}}
+                }}catch(e){{}}'''
+                self.ui._eval(err_js)
+        except ImportError:
+            print("[KREE PWA] serve_pwa module not found. PWA server disabled.")
+        except Exception as e:
+            print(f"[KREE PWA] Failed to start PWA server: {e}")
+
+        # Initialize wake event
+        self.wake_event = asyncio.Event()
+        if getattr(self, "start_awake", False):
+            self.wake_event.set()
+        else:
+            self.wake_event.clear()
 
         while True:
             try:
-                print("[JARVIS] 🔌 Connecting...")
+                # Sleep Barrier Engine
+                if not self.wake_event.is_set():
+                    print("[JARVIS] 💤 System sleeping. Awaiting Wake Word...")
+                    await self.wake_event.wait()
+
+                # Trigger the welcome voice and session context analyzer ONLY on first wake
+                if not self._welcomed:
+                    self._welcomed = True
+                    _local_welcome_voice(self)
+                    
+                    try:
+                        import core.onboarding as onboard
+                        if onboard.is_first_launch():
+                            # This will be handled inside the connect taskgroup later
+                            self._needs_onboarding = True
+                    except Exception:
+                        pass
+            
+                from memory.config_manager import load_audio_settings
+                self._audio_settings = load_audio_settings()
+                intel_mode = self._audio_settings.get("intelligence_mode", "CLOUD_GEMINI")
+
+                if "LOCAL" in intel_mode:
+                    print(f"[JARVIS] 🔌 Starting LOCAL AIR-GAPPED MODE ({intel_mode})...")
+                    self.ui.write_log(f"Kree switched to {intel_mode}.")
+                    self._trace(TelemetryEvents.CONNECTION_OPEN, "Local Mode initialized")
+                    await self._run_local_offline_loop()
+                    await asyncio.sleep(3)
+                    continue
+
+                print("[JARVIS] Connecting to Cloud WebRTC...")
                 config = self._build_config()
 
                 async with (
@@ -2135,45 +3173,294 @@ class JarvisLive:
                     self._loop          = asyncio.get_event_loop() 
                     self.audio_in_queue = asyncio.Queue(maxsize=MAX_AUDIO_IN_QUEUE)
                     self.out_queue      = asyncio.Queue(maxsize=MAX_AUDIO_OUT_QUEUE)
+                    mic_enabled = True  # Always enable mic on boot — voice is core to Kree
 
                     print("[JARVIS] \u2705 Connected.")
-                    self.ui.write_log("Kree online.")
                     self._trace(TelemetryEvents.CONNECTION_OPEN, "Realtime connection opened")
-                    
-                    if not self._welcomed:
-                        self._welcomed = True
-                        self.speak("System online. Welcome back, master.")
 
                     tg.create_task(self._send_realtime())
-                    tg.create_task(self._listen_audio())
+                    if mic_enabled:
+                        tg.create_task(self._listen_audio())
                     tg.create_task(self._listen_camera())
                     tg.create_task(self._receive_audio())
                     tg.create_task(self._play_audio())
+                    
+                    self._last_user_turn = time.time()
+                    tg.create_task(self._proactive_check_loop())
+                    
+                    try:
+                        import core.app_watcher as aw
+                        tg.create_task(aw.watch_processes(self.session))
+                    except Exception as e:
+                        print(f"[JARVIS] ⚠️ App Watcher fail: {e}")
+                        
+                    if getattr(self, "_needs_onboarding", False):
+                        try:
+                            import core.onboarding as onboard
+                            tg.create_task(onboard.first_time_setup(self.session))
+                            self._needs_onboarding = False
+                        except Exception as e:
+                            print(f"[JARVIS] ⚠️ Base Onboarding Trigger Fail: {e}")
+
+                    # Start PWA Background Telemetry
+                    async def _pwa_telemetry_loop():
+                        start_time = time.time()
+                        tick = 0
+                        while True:
+                            await asyncio.sleep(5)
+                            tick += 1
+                            uptime = int(time.time() - start_time)
+                            m, s = divmod(uptime, 60)
+                            h, m = divmod(m, 60)
+                            if self.mobile_bridge.clients:
+                                await self.mobile_bridge.broadcast({
+                                    "type": "telemetry",
+                                    "status": "Online",
+                                    "latency": "<1",
+                                    "uptime": f"{h:02d}:{m:02d}:{s:02d}"
+                                })
+                            # Every ~15 seconds, send system stats for Desktop Monitor tab
+                            if tick % 3 == 0 and self.mobile_bridge.clients:
+                                try:
+                                    import psutil
+                                    procs = []
+                                    for p in psutil.process_iter(['name', 'cpu_percent']):
+                                        try:
+                                            info = p.info
+                                            if info['cpu_percent'] and info['cpu_percent'] > 0:
+                                                procs.append({'name': info['name'], 'cpu': round(info['cpu_percent'], 1)})
+                                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                            pass
+                                    procs.sort(key=lambda x: x['cpu'], reverse=True)
+                                    await self.mobile_bridge.broadcast({
+                                        "type": "system_stats",
+                                        "processes": procs[:20],
+                                        "cpu": round(psutil.cpu_percent(interval=0), 1),
+                                        "ram": round(psutil.virtual_memory().percent, 1)
+                                    })
+                                except Exception:
+                                    pass
+
+                    # Screen Broadcast Loop (Desktop → Mobile)
+                    async def _screen_broadcast_loop():
+                        try:
+                            import mss
+                            import io
+                            import base64
+                            from PIL import Image
+                        except ImportError:
+                            print("[JARVIS] ⚠️ Screen broadcast requires mss and Pillow. pip install mss Pillow")
+                            return
+                        sct = mss.mss()
+                        while True:
+                            await asyncio.sleep(5)  # 5s interval to reduce CPU load
+                            if not self.mobile_bridge.clients:
+                                continue
+                            try:
+                                monitor = sct.monitors[1]
+                                img = sct.grab(monitor)
+                                pil = Image.frombytes('RGB', img.size, img.rgb)
+                                pil = pil.resize((640, 360), Image.LANCZOS)
+                                buf = io.BytesIO()
+                                pil.save(buf, format='JPEG', quality=35)
+                                b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+                                await self.mobile_bridge.broadcast({
+                                    "type": "screen_frame",
+                                    "data": b64
+                                })
+                            except Exception:
+                                pass
+
+                    if telemetry_settings.get("enabled", True):
+                        tg.create_task(_pwa_telemetry_loop())
+                    tg.create_task(_screen_broadcast_loop())
 
             except Exception as e:
                 self._trace(TelemetryEvents.CONNECTION_ERROR, str(e))
-                print(f"[JARVIS] ⚠️  Error: {e}")
-                traceback.print_exc()
+                print(f"[JARVIS] Error: {e}")
+                # traceback.print_exc()
 
-            print("[JARVIS] 🔄 Reconnecting in 3s...")
+            if not self.wake_event.is_set():
+                print("[JARVIS] Session closed intentionally. Waiting for wake.")
+                continue
+
+            print("[JARVIS] Reconnecting in 3s...")
             self._trace(TelemetryEvents.RECONNECT_WAIT, "Reconnecting in 3s")
             await asyncio.sleep(3)
 
+    async def _run_local_offline_loop(self):
+        """
+        Classic STT -> LLM -> TTS pipeline for Local Mode, bypassing Gemini Live WebRTC.
+        """
+        self._loop = asyncio.get_event_loop()
+        from core.llm_gateway import KreeIntelligenceEngine
+        import speech_recognition as sr
+        
+        engine = KreeIntelligenceEngine()
+        recognizer = sr.Recognizer()
+        recognizer.energy_threshold = self._audio_settings.get("vad_threshold_rising", 300)
+        recognizer.dynamic_energy_threshold = True
+        recognizer.pause_threshold = 0.8
+        recognizer.non_speaking_duration = 0.5  # Must be <= pause_threshold to avoid AssertionError
+
+        try:
+            device_index = int(self._audio_settings.get("input_device_index", -1))
+            if device_index == -1: device_index = None
+        except:
+            device_index = None
+
+        mic = sr.Microphone(device_index=device_index)
+        
+        with mic as source:
+            recognizer.adjust_for_ambient_noise(source, duration=1.0)
+        
+        print("[JARVIS] 🎤 Local Air-gapped Mic ready.")
+        
+        while True:
+            # Poll for mode switch back to cloud
+            if "LOCAL" not in load_audio_settings().get("intelligence_mode", "CLOUD_GEMINI"):
+                print("[JARVIS] 🔌 Mode switched back to Cloud. Exiting local loop.")
+                break
+                
+            try:
+                # STT phase (Listen)
+                audio = await asyncio.to_thread(recognizer.listen, mic, timeout=1.0, phrase_time_limit=10.0)
+                
+                # Instant acknowledgment SFX (Jarvis-style)
+                try:
+                    import winsound
+                    winsound.PlaySound("SystemAsterisk", winsound.SND_ALIAS | winsound.SND_ASYNC)
+                except: pass
+
+                try:
+                    # Fallback to free Google STT if strictly local STT (whisper) isn't loaded yet.
+                    text = await asyncio.to_thread(recognizer.recognize_google, audio)
+                    text = self._sanitize_multilingual_transcript(text)
+                    if not text: continue
+                    
+                    print(f"[JARVIS] 🗣️ Heard (Local STT): {text}")
+                    self.ui.write_log(f"You: {text}")
+
+                    if text.lower().startswith("open "):
+                        self.on_user_text(text)
+                        continue
+                    
+                    # LLM Gateway phase (Think)
+                    response_text = await asyncio.to_thread(engine.generate_content, text)
+                    print(f"[JARVIS] 🧠 Local Gemma Response: {response_text[:100]}...")
+                    self.ui.write_log(f"Kree: {response_text}")
+                    
+                    # TTS phase (Speak)
+                    self.speak(response_text)
+                    
+                except sr.UnknownValueError:
+                    pass # Couldn't understand audio
+                except sr.RequestError as e:
+                    print(f"[JARVIS] STT limit/network error: {e}")
+                    
+            except sr.WaitTimeoutError:
+                pass # Timeout silently to re-check the loop
+            except Exception as e:
+                print(f"[JARVIS] Local loop error: {e}")
+                await asyncio.sleep(1)
+
 def main():
-    ui = JarvisUI("face.png")
+    import sys
+    is_background = "--background" in sys.argv
+    ui = JarvisUI("face.png", startup_hidden=is_background)
 
     def runner():
         ui.wait_for_api_key()
         ui.wait_for_unlock()
 
         kree = JarvisLive(ui)
+        kree.start_awake = not is_background
+            
+        # ── First Run Startup Prompt ──
+        try:
+            from memory.config_manager import load_audio_settings, save_audio_settings
+            import ctypes
+            import winreg
+            settings = load_audio_settings()
+            if 'auto_start_configured' not in settings:
+                result = ctypes.windll.user32.MessageBoxW(0, 
+                    "Should Kree start automatically when Windows starts?\nThis lets you use the wake word anytime. (Recommended)", 
+                    "Kree AI Setup", 0x04 | 0x20) # YESNO | QUESTION
+                
+                if result == 6:  # IDYES
+                    try:
+                        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsof        # 1. Boot System Tray
+        try:
+            from core.tray import SystemTrayApp
+            
+            def safe_shutdown():
+                print("[JARVIS] 🛑 Processing safe shutdown...")
+                from core.updater import run_installer_and_exit
+                # Try to apply update. If none is ready, this returns False and we just exit normally.
+                if run_installer_and_exit():
+                    return # Process is already exiting via os._exit(0) in the helper
+                os._exit(0)
+
+            tray = SystemTrayApp(
+                on_wake_click=kree.wake,
+                on_quit_click=safe_shutdown
+            )
+            kree.system_tray = tray
+            tray.run_daemon()
+            print("[JARVIS] 🌟 System Tray Armed")
+        except Exception as e:
+            print(f"[JARVIS] Missing Tray dependency: {e}")
+
+        # 2. Boot OpenWakeWord Engine
+        try:
+            from core.wakeword import WakeWordDetector
+            wakeword = WakeWordDetector(on_wake_callback=kree.wake)
+            wakeword.start()
+            kree._wakeword_detector = wakeword
+            print("[JARVIS] WakeWord Daemon Armed (OpenWakeWord)")
+        except Exception as e:
+            print(f"[JARVIS] Missing WakeWord dependency: {e}")
+
+        # Boot analytics session
+        try:
+            from core.analytics import track_session_start
+            track_session_start()
+        except Exception:
+            pass
+
+        # Boot auto-updater (background check + silent download)
+        try:
+            from core.updater import check_update_background
+            # v1.0.1 Stable: Enabling auto_download by default
+            check_update_background(ui=ui, speak_fn=_local_speech_voice, auto_download=True)
+        except Exception:
+            pass
+
         try:
             asyncio.run(kree.run())
         except KeyboardInterrupt:
-            print("\n🔴 Shutting down...")
-
-    # Aegis Security ensures authentication through the UI Lock Screen directly.
-    # We no longer block the main thread with OS-level dialogs during boot.
+            safe_shutdown()
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"[KREE CRASH] {e}\n{error_details}")
+            try:
+                from core.analytics import track_error
+                track_error("crash", str(e))
+            except Exception:
+                pass
+            try:
+                from core.backend import log_crash
+                log_crash(str(e), error_details)
+            except Exception:
+                pass
+            raise
+        finally:
+            try:
+                from core.analytics import shutdown
+                shutdown()
+            except Exception:
+                pass
 
     threading.Thread(target=runner, daemon=True).start()
     ui.run()  # blocks — runs the pywebview event loop

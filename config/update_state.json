@@ -1,0 +1,15 @@
+{
+  "installed_version": "0.1.0",
+  "update_available": false,
+  "status": "No update server configured.",
+  "manifest_url": "",
+  "app_name": "Kree AI",
+  "latest_version": "0.1.1",
+  "download_url": "http://127.0.0.1:8001/Kree-AI-v0.1.0-win64.zip",
+  "package_type": "zip",
+  "checksum": "bde1ec02c388e3f68ed1f9417b5dbe5aa83fb44bbe043aab9877f5f369faf434",
+  "notes": "Smoke test manifest",
+  "published_at": "",
+  "error": "Missing manifest URL.",
+  "last_checked": "2026-03-30T19:46:35Z"
+}

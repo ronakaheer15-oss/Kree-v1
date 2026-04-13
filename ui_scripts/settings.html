@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Manrope:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "tertiary-container": "#00d5fd",
+                        "surface-variant": "#262528",
+                        "on-surface-variant": "#adaaad",
+                        "tertiary-dim": "#00c7ec",
+                        "on-error-container": "#ffa8a3",
+                        "on-secondary-fixed-variant": "#006548",
+                        "error-container": "#9f0519",
+                        "tertiary-fixed-dim": "#00c7ec",
+                        "outline": "#767577",
+                        "secondary-fixed-dim": "#53e7b1",
+                        "secondary-fixed": "#64f6be",
+                        "on-primary": "#005b32",
+                        "secondary-container": "#006c4d",
+                        "on-surface": "#f9f5f8",
+                        "error": "#ff716c",
+                        "on-tertiary-container": "#004553",
+                        "primary-fixed": "#46fa9c",
+                        "surface-container-lowest": "#000000",
+                        "background": "#0e0e10",
+                        "surface-container-high": "#1f1f22",
+                        "secondary-dim": "#53e7b1",
+                        "primary": "#46fa9c",
+                        "inverse-primary": "#006e3e",
+                        "on-secondary-container": "#e0ffed",
+                        "on-tertiary-fixed-variant": "#004e5f",
+                        "inverse-on-surface": "#565457",
+                        "on-tertiary-fixed": "#002f39",
+                        "error-dim": "#d7383b",
+                        "surface-tint": "#46fa9c",
+                        "surface-dim": "#0e0e10",
+                        "on-tertiary": "#004f5f",
+                        "on-primary-container": "#004927",
+                        "tertiary": "#72e0ff",
+                        "outline-variant": "#48474a",
+                        "surface-container": "#19191c",
+                        "surface": "#0e0e10",
+                        "tertiary-fixed": "#00d5fd",
+                        "surface-container-highest": "#262528",
+                        "surface-bright": "#2c2c2f",
+                        "on-secondary-fixed": "#004530",
+                        "on-primary-fixed-variant": "#006639",
+                        "secondary": "#64f6be",
+                        "primary-dim": "#2feb8f",
+                        "inverse-surface": "#fcf8fb",
+                        "primary-container": "#12e085",
+                        "surface-container-low": "#131315",
+                        "on-background": "#f9f5f8",
+                        "on-secondary": "#005a40",
+                        "primary-fixed-dim": "#2feb8f",
+                        "on-primary-fixed": "#004625",
+                        "on-error": "#490006"
+                    },
+                    fontFamily: {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Manrope"],
+                        "label": ["Space Grotesk"]
+                    },
+                    borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 200, 'GRAD' 0, 'opsz' 24;
+        }
+        .ease-out-expo {
+            transition-timing-function: cubic-bezier(0.19, 1, 0.22, 1);
+        }
+        .glass-panel {
+            background: rgba(19, 19, 21, 0.6);
+            backdrop-filter: blur(20px);
+        }
+        .tech-grid {
+            background-image: radial-gradient(rgba(70, 250, 156, 0.05) 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface font-body selection:bg-primary/30 selection:text-primary">
+<!-- Dashboard Background (Blurred Content) -->
+<div class="fixed inset-0 z-0 tech-grid opacity-20 pointer-events-none"></div>
+<div class="fixed inset-0 flex items-center justify-center p-4 md:p-6 z-50">
+<!-- Backdrop -->
+<div class="absolute inset-0 bg-surface-container-lowest/80 backdrop-blur-sm"></div>
+<!-- AEGIS SECURITY MATRIX MODAL -->
+<div class="relative w-full max-w-2xl glass-panel border border-primary/10 rounded-sm shadow-[0px_0px_50px_rgba(0,0,0,0.8)] overflow-hidden">
+<!-- TopAppBar Integrated Logic -->
+<div class="flex items-center justify-between px-8 py-6 border-b border-outline-variant/10">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary text-2xl" style="font-variation-settings: 'FILL' 1;">shield_lock</span>
+<h1 class="font-headline font-bold text-primary tracking-widest text-lg uppercase">AEGIS SECURITY MATRIX</h1>
+</div>
+<button class="p-2 hover:bg-surface-container-highest rounded-full transition-colors duration-300">
+<span class="material-symbols-outlined text-on-surface-variant">close</span>
+</button>
+</div>
+<div class="p-8 space-y-10">
+<!-- SECTION 1: CHANGE MASTER PIN -->
+<section class="space-y-6">
+<div class="flex items-center justify-between">
+<label class="font-headline text-[0.6875rem] uppercase tracking-[0.2em] text-on-surface-variant font-bold">CHANGE MASTER PIN</label>
+<span class="h-[1px] flex-grow ml-4 bg-outline-variant/20"></span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-end">
+<div class="space-y-4">
+<p class="text-xs text-on-surface-variant/70 leading-relaxed max-w-xs">
+                                Update your core access sequence. This bypasses all biometric overrides in emergency state.
+                            </p>
+<div class="relative group">
+<input class="w-full bg-surface-container-low border-b border-outline-variant py-4 px-2 text-2xl font-headline tracking-[1em] focus:outline-none focus:border-primary transition-all duration-300 placeholder:text-outline-variant/30 text-primary" placeholder="••••••" type="password"/>
+<div class="absolute bottom-0 left-0 h-[2px] w-0 bg-primary group-focus-within:w-full transition-all duration-500 ease-out-expo shadow-[0_0_10px_rgba(70,250,156,0.5)]"></div>
+</div>
+</div>
+<button class="group relative flex items-center justify-center gap-3 bg-primary text-on-primary font-headline font-bold py-4 px-8 uppercase tracking-widest text-xs rounded-sm hover:shadow-[0_0_20px_rgba(70,250,156,0.4)] transition-all duration-300 active:scale-95">
+<span class="material-symbols-outlined text-sm">encrypted</span>
+                            SAVE NEW ACCESS KEY
+                        </button>
+</div>
+</section>
+<!-- SECTION 2 & 3: BENTO GRID LAYOUT -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<!-- BIOMETRIC FLOW -->
+<div class="bg-surface-container-low/40 p-6 rounded-sm border border-outline-variant/10 hover:border-primary/20 transition-colors duration-300 group">
+<div class="flex items-center justify-between mb-6">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 0;">fingerprint</span>
+<label class="font-headline text-[0.6875rem] uppercase tracking-[0.15em] font-bold">BIOMETRIC FLOW</label>
+</div>
+<!-- CUSTOM TOGGLE -->
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox"/>
+<div class="w-11 h-5 bg-surface-container-highest rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-on-surface-variant peer-checked:after:bg-primary after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary/20 border border-outline-variant/20"></div>
+</label>
+</div>
+<p class="text-xs text-on-surface-variant leading-relaxed">
+                            Enable neural-pattern recognition for instant decryption upon visual contact or haptic confirmation.
+                        </p>
+<div class="mt-4 flex items-center gap-2">
+<div class="w-1 h-1 rounded-full bg-primary animate-pulse"></div>
+<span class="text-[10px] text-primary/60 font-headline tracking-tighter uppercase">Scanning Active</span>
+</div>
+</div>
+<!-- AUTO-LOCK TIMER -->
+<div class="bg-surface-container-low/40 p-6 rounded-sm border border-outline-variant/10 hover:border-primary/20 transition-colors duration-300">
+<div class="flex items-center gap-3 mb-6">
+<span class="material-symbols-outlined text-primary">timer</span>
+<label class="font-headline text-[0.6875rem] uppercase tracking-[0.15em] font-bold">AUTO-LOCK TIMER</label>
+</div>
+<div class="space-y-4">
+<div class="flex justify-between text-[10px] font-headline text-on-surface-variant uppercase">
+<span>Responsive</span>
+<span class="text-primary">05:00M</span>
+<span>Absolute</span>
+</div>
+<input class="w-full h-1 bg-surface-container-highest rounded-lg appearance-none cursor-pointer accent-primary" max="5" min="1" type="range" value="4"/>
+<p class="text-[10px] text-on-surface-variant/50 uppercase tracking-widest text-center mt-2">Matrix will purge session data after 5m of inactivity.</p>
+</div>
+</div>
+</div>
+<!-- FOOTER / META -->
+<div class="flex flex-col md:flex-row items-center justify-between pt-6 border-t border-outline-variant/10 gap-4">
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-2">
+<span class="text-[10px] font-headline text-on-surface-variant/40 uppercase tracking-widest">Protocol:</span>
+<span class="text-[10px] font-headline text-primary uppercase font-bold">SHA-512_KREE</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="text-[10px] font-headline text-on-surface-variant/40 uppercase tracking-widest">Node:</span>
+<span class="text-[10px] font-headline text-on-surface uppercase">ORBIT_772</span>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<div class="relative w-2 h-2">
+<div class="absolute inset-0 bg-primary rounded-full animate-ping opacity-20"></div>
+<div class="absolute inset-0 bg-primary rounded-full scale-50"></div>
+</div>
+<span class="text-[10px] font-headline text-primary/80 uppercase font-black tracking-widest">SYSTEM SECURED</span>
+</div>
+</div>
+</div>
+<!-- Subtle Decorative Elements -->
+<div class="absolute top-0 right-0 p-4 opacity-5">
+<span class="material-symbols-outlined text-8xl">verified_user</span>
+</div>
+</div>
+</div>
+<!-- Background Decoration for Immersive Feel -->
+<div class="fixed top-12 left-12 space-y-2 opacity-20 hidden md:block">
+<div class="h-1 w-24 bg-primary"></div>
+<div class="h-1 w-48 bg-outline-variant"></div>
+<div class="h-1 w-12 bg-primary-container"></div>
+</div>
+<div class="fixed bottom-12 right-12 opacity-10 hidden md:block">
+<p class="font-headline text-[8rem] font-black tracking-tighter leading-none select-none">AEGIS</p>
+</div>
+</body></html>

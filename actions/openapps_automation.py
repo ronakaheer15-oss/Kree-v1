@@ -62,7 +62,9 @@ def _get_openapps_dir() -> Path:
     candidates = [
         here.parents[3] / "OpenApps-main",
         here.parents[2] / "OpenApps-main",
+        here.parents[1] / "OpenApps-main",
         Path.cwd() / "OpenApps-main",
+        Path("E:/OpenApps-main"), # Force hardcode just in case it's specifically in the E root
     ]
     for c in candidates:
         if (c / "launch.py").exists():
@@ -210,6 +212,8 @@ def _is_open_success(result_text: str) -> bool:
     t = (result_text or "").lower()
     if not t:
         return False
+    if "__broadcast_intent__" in t:
+        return True
     if "failed" in t or "couldn't confirm" in t or "could not" in t:
         return False
     return "opened" in t or "success" in t
@@ -234,7 +238,8 @@ def _process_running(hints: list[str]) -> bool:
     return False
 
 
-def _try_open_native(target: str, player: Any = None) -> tuple[bool, str]:
+def _try_open_native(target: str, player: Any = None) -> tuple[bool, str, str | None]:
+    """Returns (success, app_name_used, raw_result_string)."""
     norm = target.strip().lower()
     candidates = _NATIVE_APP_CANDIDATES.get(norm, [target])
 
@@ -247,11 +252,11 @@ def _try_open_native(target: str, player: Any = None) -> tuple[bool, str]:
                 session_memory=None,
             )
             if _is_open_success(r):
-                return True, app_name
+                return True, app_name, r
         except Exception:
             continue
 
-    return False, ""
+    return False, "", None
 
 
 def _download_targets(targets: list[str]) -> str:
@@ -299,7 +304,7 @@ def _open_and_delegate(args: dict[str, Any], player: Any = None) -> str:
         if not target:
             continue
 
-        ok, app_used = _try_open_native(target, player=player)
+        ok, app_used, _ = _try_open_native(target, player=player)
         if ok:
             native_opened.append(target)
             launched.append(app_used)
@@ -351,7 +356,7 @@ def _open_and_delegate(args: dict[str, Any], player: Any = None) -> str:
 
     if delegate_app in {"codex", "chatgpt", "openai"} and prompt:
         # Prefer native app for Codex/ChatGPT, only browser fallback if requested.
-        codex_ok, _ = _try_open_native("codex", player=player)
+        codex_ok, _, _ = _try_open_native("codex", player=player)
         if codex_ok:
             native_opened.append("codex")
         elif fallback == "ask":
@@ -365,7 +370,7 @@ def _open_and_delegate(args: dict[str, Any], player: Any = None) -> str:
                 opened.append("codex")
 
     if not targets and delegate_app and prompt:
-        codex_ok, _ = _try_open_native(delegate_app, player=player)
+        codex_ok, _, _ = _try_open_native(delegate_app, player=player)
         if codex_ok:
             return f"Opened native {delegate_app}."
         if fallback == "ask":
@@ -428,8 +433,8 @@ def openapps_automation(
     openapps_dir = _get_openapps_dir()
     if not (openapps_dir / "launch.py").exists():
         return (
-            "OpenApps folder not found. Expected launch.py under: "
-            f"{openapps_dir}. Set OPENAPPS_DIR to fix this."
+            "The OpenApps automation environment isn't installed. "
+            "Please tell the user they need to clone OpenApps-main into the current drive."
         )
 
     if action in {"status", "health"}:

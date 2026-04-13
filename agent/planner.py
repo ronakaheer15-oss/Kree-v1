@@ -157,12 +157,14 @@ def _get_api_key() -> str:
 
 
 def create_plan(goal: str, context: str = "") -> dict:
-    import google.generativeai as genai
+    from google import genai
+    from google.genai import types
 
-    genai.configure(api_key=_get_api_key())
-    model = genai.GenerativeModel(
-        model_name="gemini-2.5-flash-lite",
-        system_instruction=PLANNER_PROMPT
+    client = genai.Client(api_key=_get_api_key())
+    model_name = "gemini-2.5-flash-lite"
+    config = types.GenerateContentConfig(
+        system_instruction=PLANNER_PROMPT,
+        temperature=0.1
     )
 
     user_input = f"Goal: {goal}"
@@ -170,7 +172,11 @@ def create_plan(goal: str, context: str = "") -> dict:
         user_input += f"\n\nContext: {context}"
 
     try:
-        response = model.generate_content(user_input)
+        response = client.models.generate_content(
+            model=model_name,
+            contents=user_input,
+            config=config
+        )
         text     = response.text.strip()
         text     = re.sub(r"```(?:json)?", "", text).strip().rstrip("`").strip()
 
@@ -217,12 +223,14 @@ def _fallback_plan(goal: str) -> dict:
 
 
 def replan(goal: str, completed_steps: list, failed_step: dict, error: str) -> dict:
-    import google.generativeai as genai
+    from google import genai
+    from google.genai import types
 
-    genai.configure(api_key=_get_api_key())
-    model = genai.GenerativeModel(
-        model_name="gemini-2.5-flash",
-        system_instruction=PLANNER_PROMPT
+    client = genai.Client(api_key=_get_api_key())
+    model_name = "gemini-2.5-flash"
+    config = types.GenerateContentConfig(
+        system_instruction=PLANNER_PROMPT,
+        temperature=0.1
     )
 
     completed_summary = "\n".join(
@@ -240,7 +248,11 @@ Error: {error}
 Create a REVISED plan for the remaining work only. Do not repeat completed steps."""
 
     try:
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config=config
+        )
         text     = response.text.strip()
         text     = re.sub(r"```(?:json)?", "", text).strip().rstrip("`").strip()
         plan     = json.loads(text)

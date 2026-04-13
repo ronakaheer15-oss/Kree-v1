@@ -1,0 +1,15 @@
+{
+  "input_device_index": null,
+  "vad_threshold_rising": 220,
+  "vad_threshold_falling": 160,
+  "partial_confidence_min": 0.7,
+  "partial_flush_seconds": 2.0,
+  "tool_gate_window_seconds": 4.0,
+  "mic_enabled": false,
+  "auto_face_id": true,
+  "disable_lock_screen": true,
+  "kree_voice": "Kore",
+  "welcome_voice_enabled": true,
+  "intelligence_mode": "CLOUD_GEMINI",
+  "auto_start_configured": true
+}

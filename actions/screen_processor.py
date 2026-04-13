@@ -29,8 +29,18 @@ try:
 except ImportError:
     _PIL_OK = False
 
-from google import genai
-from google.genai import types
+
+_GENAI_SDK = None
+
+
+def _ensure_genai_sdk():
+    global _GENAI_SDK
+    if _GENAI_SDK is None:
+        from google import genai as _genai
+        from google.genai import types as _types
+
+        _GENAI_SDK = (_genai, _types)
+    return _GENAI_SDK
 
 def get_base_dir():
     if getattr(sys, "frozen", False):
@@ -209,6 +219,7 @@ class _LiveSession:
         self._audio_in  = asyncio.Queue()
         self._send_lock = asyncio.Lock()
 
+        genai, types = _ensure_genai_sdk()
         client = genai.Client(
             api_key=_get_api_key(),
             http_options={"api_version": "v1beta"}

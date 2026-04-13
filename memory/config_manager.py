@@ -14,6 +14,7 @@ CONFIG_DIR  = BASE_DIR / "config"
 CONFIG_FILE = CONFIG_DIR / "api_keys.json"
 AUDIO_CONFIG_FILE = CONFIG_DIR / "audio_settings.json"
 TELEMETRY_CONFIG_FILE = CONFIG_DIR / "telemetry_settings.json"
+EMAIL_CONFIG_FILE = CONFIG_DIR / "email_settings.json"
 
 
 DEFAULT_AUDIO_SETTINGS = {
@@ -24,6 +25,10 @@ DEFAULT_AUDIO_SETTINGS = {
     "partial_flush_seconds": 2.0,
     "tool_gate_window_seconds": 4.0,
     "mic_enabled": True,
+    "auto_face_id": False,
+    "disable_lock_screen": False,
+    "kree_voice": "Kore",
+    "welcome_voice_enabled": True,
 }
 
 
@@ -33,6 +38,15 @@ DEFAULT_TELEMETRY_SETTINGS = {
     "max_bytes": 1048576,
     "backup_count": 5,
     "level": "INFO",
+}
+
+
+DEFAULT_EMAIL_SETTINGS = {
+    "USE_MOCK_EMAIL": True,
+    "email_address": "",
+    "app_password": "",
+    "imap_server": "imap.gmail.com",
+    "smtp_server": "smtp.gmail.com"
 }
 
 
@@ -58,6 +72,27 @@ def save_api_keys(gemini_api_key: str) -> None:
 
     CONFIG_FILE.write_text(
         json.dumps(data, indent=2),
+        encoding="utf-8"
+    )
+
+
+def load_email_settings() -> dict:
+    data = dict(DEFAULT_EMAIL_SETTINGS)
+    if not EMAIL_CONFIG_FILE.exists():
+        return data
+    try:
+        raw = json.loads(EMAIL_CONFIG_FILE.read_text(encoding="utf-8"))
+        if isinstance(raw, dict):
+            data.update(raw)
+    except Exception as e:
+        print(f"❌ Failed to load email_settings.json: {e}")
+    return data
+
+
+def save_email_settings(settings: dict) -> None:
+    ensure_config_dir()
+    EMAIL_CONFIG_FILE.write_text(
+        json.dumps(settings, indent=2),
         encoding="utf-8"
     )
 

@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a0a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Kree Companion</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ══════ HEADER ══════ -->
+  <header class="kree-header">
+    <div class="header-left">
+      <div class="kree-logo">K</div>
+      <span class="header-title">KREE</span>
+    </div>
+    <div id="status-pill" class="status-pill disconnected">○ OFFLINE</div>
+  </header>
+
+  <!-- ══════ INSTALL PROMPT ══════ -->
+  <div id="install-banner" class="install-banner" style="display:none;">
+    <div class="install-banner-inner">
+      <span>📲 Install Kree for the best experience</span>
+      <button id="install-btn" class="kree-btn sm primary">Add to Home Screen</button>
+      <button class="install-dismiss" onclick="dismissInstall()">&times;</button>
+    </div>
+  </div>
+
+  <!-- ══════ IN-APP NOTIFICATION TOAST ══════ -->
+  <div id="notification-toast" class="notification-toast" style="display:none;">
+    <div class="toast-icon">🔔</div>
+    <div class="toast-body">
+      <div class="toast-title">Kree</div>
+      <div class="toast-message" id="toast-message"></div>
+    </div>
+    <button class="toast-close" onclick="hideToast()">&times;</button>
+  </div>
+
+  <!-- ══════ OFFLINE BANNER ══════ -->
+  <div id="offline-banner" class="offline-banner" style="display:none;">
+    <div class="offline-pulse"></div>
+    <span>Bridge offline — reconnecting...</span>
+  </div>
+
+  <!-- ══════ MAIN CONTENT ══════ -->
+  <div id="main-content" class="main-content">
+
+    <!-- ═══ SCAN VIEW (shown when disconnected) ═══ -->
+    <div id="scan-view" class="tab-page scan-view">
+      <div class="scan-icon-wrapper">
+        <svg style="width:64px;height:64px;fill:var(--primary);opacity:0.6;" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/></svg>
+        <div class="scan-title">KREE COMPANION</div>
+        <div class="scan-sub">Connect to your desktop to begin</div>
+      </div>
+      <input type="text" id="connect-ip-input" class="kree-input" placeholder="Desktop IP (e.g. 192.168.1.5)" />
+      <button id="scan-btn" class="kree-btn primary">CONNECT</button>
+      <div class="scan-hint">Enter the IP shown on your Kree desktop</div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- ═══ TAB: DASHBOARD ═══ -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div id="tab-dashboard" class="tab-page" style="display:none;">
+
+      <!-- Desktop Status Card -->
+      <div class="card status-card">
+        <div class="card-row">
+          <div class="status-dot green" id="desktop-status-dot"></div>
+          <span class="card-title">Kree Desktop</span>
+          <span class="badge green" id="desktop-status-badge">Online</span>
+        </div>
+        <div class="card-sub" id="desktop-active-task">No active task</div>
+      </div>
+
+      <!-- System Stats -->
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-label">CPU</div>
+          <div class="stat-value" id="dash-cpu">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">RAM</div>
+          <div class="stat-value" id="dash-ram">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">UPTIME</div>
+          <div class="stat-value" id="dash-uptime">--</div>
+        </div>
+        <div class="stat-card" id="battery-card" style="display:none;">
+          <div class="stat-label">BATTERY</div>
+          <div class="stat-value" id="dash-battery">--</div>
+        </div>
+      </div>
+
+      <!-- Live Desktop Screen -->
+      <div class="card screen-card">
+        <div class="card-header-row">
+          <span class="card-label">LIVE DESKTOP VIEW</span>
+          <span class="signal-badge" id="signal-badge">● Strong</span>
+        </div>
+        <div class="screen-container">
+          <img id="desktop-screen-preview" src="" class="screen-img" style="display:none;" />
+          <div id="screen-preview-placeholder" class="screen-placeholder">
+            <svg viewBox="0 0 24 24" style="width:28px;height:28px;fill:var(--primary);opacity:0.2;"><path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.1-.9-2-2-2zm0 14H3V5h18v12z"/></svg>
+            <div class="placeholder-text">Waiting for frames...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <div class="card">
+        <div class="card-label" style="margin-bottom:10px;">QUICK ACTIONS</div>
+        <div class="actions-grid">
+          <button class="action-btn" onclick="sendQuickAction('lock')">
+            <svg viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+            <span>Lock</span>
+          </button>
+          <button class="action-btn" onclick="sendQuickAction('sleep')">
+            <svg viewBox="0 0 24 24"><path d="M9 2c-1.05 0-2.05.16-3 .46 4.06 1.27 7 5.06 7 9.54 0 4.48-2.94 8.27-7 9.54.95.3 1.95.46 3 .46 5.52 0 10-4.48 10-10S14.52 2 9 2z"/></svg>
+            <span>Sleep</span>
+          </button>
+          <button class="action-btn" onclick="sendQuickAction('mute')">
+            <svg viewBox="0 0 24 24"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
+            <span>Mute</span>
+          </button>
+          <button class="action-btn" onclick="sendQuickAction('screenshot')">
+            <svg viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+            <span>Screenshot</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Macro Chains -->
+      <div class="card">
+        <div class="card-label" style="margin-bottom:10px;">AUTOMATION MACROS</div>
+        <div class="actions-grid macro-grid">
+          <button class="action-btn macro-btn" onclick="triggerMacro('work session')">
+            <span class="macro-emoji">💼</span>
+            <span>Work</span>
+          </button>
+          <button class="action-btn macro-btn" onclick="triggerMacro('gaming session')">
+            <span class="macro-emoji">🎮</span>
+            <span>Gaming</span>
+          </button>
+          <button class="action-btn macro-btn" onclick="triggerMacro('briefing')">
+            <span class="macro-emoji">📅</span>
+            <span>Briefing</span>
+          </button>
+          <button class="action-btn macro-btn" onclick="triggerMacro('shutdown')">
+            <span class="macro-emoji">🔴</span>
+            <span>End</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Recent Commands -->
+      <div class="card">
+        <div class="card-label" style="margin-bottom:8px;">RECENT COMMANDS</div>
+        <div id="recent-commands" class="recent-commands-list">
+          <div class="empty-state-sm">No commands yet</div>
+        </div>
+      </div>
+
+      <!-- Notification Mirror -->
+      <div class="card">
+        <div class="card-label" style="margin-bottom:8px;">NOTIFICATIONS</div>
+        <div id="notification-list" class="notification-list">
+          <div class="empty-state-sm">No notifications</div>
+        </div>
+      </div>
+
+      <!-- Settings (collapsed) -->
+      <details class="card settings-details">
+        <summary class="card-label" style="cursor:pointer; list-style:none; display:flex; align-items:center; gap:6px;">
+          <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:var(--primary);"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58z"/></svg>
+          SETTINGS
+          <span style="margin-left:auto; font-size:10px; color:#52525b;">▼</span>
+        </summary>
+        <div style="margin-top:12px; display:flex; flex-direction:column; gap:10px;">
+          <div class="settings-row">
+            <span class="settings-label">Device OS</span>
+            <span class="settings-value" id="settings-os">Detecting...</span>
+          </div>
+          <div class="settings-row">
+            <span class="settings-label">Bridge Version</span>
+            <span class="settings-value">v2.0</span>
+          </div>
+          <div class="settings-row">
+            <span class="settings-label">Connection</span>
+            <span class="settings-value" id="settings-connection">--</span>
+          </div>
+          <button class="kree-btn danger" onclick="clearAllData()" style="margin-top:8px;">CLEAR ALL DATA</button>
+          <button id="disconnect-btn" class="kree-btn outline" style="display:none;">DISCONNECT</button>
+        </div>
+      </details>
+    </div>
+
+    <!-- Floating Command Bar for Dashboard -->
+    <div id="voice-overlay-text" class="voice-overlay-text"></div>
+    <div class="floating-cmd-bar">
+      <input type="text" id="kree-cmd-input" placeholder="Message Desktop..." onkeydown="handleCmdKey(event)" />
+      <button class="cmd-send-btn" onclick="sendTextCmd()" title="Send Command">
+        <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+      </button>
+      <button id="floating-mic-btn" class="cmd-mic-btn"
+              ontouchstart="startMicStream()" ontouchend="stopMicStream()"
+              onmousedown="startMicStream()" onmouseup="stopMicStream()"
+              title="Hold to Speak">
+        <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/></svg>
+      </button>
+    </div>
+    <!-- Kree State Indicator (listening/speaking/executing) -->
+    <div id="kree-state-indicator" class="kree-state-indicator" style="display:none;">
+      <div class="state-dot" id="state-dot"></div>
+      <span id="state-label">Kree is listening</span>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- ═══ TAB: NOTES ═══ -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div id="tab-notes" class="tab-page" style="display:none;">
+      <div class="tab-header-row">
+        <span class="tab-title">NOTES</span>
+        <div class="tab-header-actions">
+          <button class="icon-btn" onclick="toggleNoteSearch()" title="Search">
+            <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+          </button>
+          <button class="icon-btn" onclick="startVoiceNote()" id="voice-note-btn" title="Voice note">
+            <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/></svg>
+          </button>
+          <button class="icon-btn primary-bg" onclick="createNewNote()" title="New note">
+            <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+          </button>
+        </div>
+      </div>
+      <!-- Search bar (hidden by default) -->
+      <div id="note-search-bar" class="search-bar" style="display:none;">
+        <input type="text" id="note-search-input" class="kree-input sm" placeholder="Search notes..." oninput="filterNotes()" />
+      </div>
+      <!-- Voice recording indicator -->
+      <div id="voice-recording" class="recording-bar" style="display:none;">
+        <div class="rec-dot"></div>
+        <span>Recording... tap to stop</span>
+      </div>
+      <!-- Note editor (hidden by default) -->
+      <div id="note-editor" class="card note-editor" style="display:none;">
+        <input type="text" id="note-editor-title" class="kree-input sm" placeholder="Note title" />
+        <textarea id="note-editor-body" class="kree-textarea" placeholder="Write your note..." rows="6"></textarea>
+        <div class="editor-actions">
+          <button class="kree-btn sm outline" onclick="cancelNoteEditor()">Cancel</button>
+          <button class="kree-btn sm primary" onclick="saveNote()">Save</button>
+        </div>
+      </div>
+      <!-- Notes list -->
+      <div id="notes-list" class="notes-list">
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+      </div>
+      <!-- Clipboard sync -->
+      <div class="card clipboard-card">
+        <div class="card-row">
+          <span class="card-label">SHARED CLIPBOARD</span>
+          <button class="kree-btn sm primary" onclick="syncClipboard()">Sync Now</button>
+        </div>
+        <div id="clipboard-content" class="clipboard-preview">Tap "Sync Now" to share clipboard</div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- ═══ TAB: CONTACTS ═══ -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div id="tab-contacts" class="tab-page" style="display:none;">
+      <div class="tab-header-row">
+        <span class="tab-title">CONTACTS</span>
+        <div class="tab-header-actions">
+          <button class="icon-btn" onclick="toggleContactSearch()" title="Search">
+            <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+          </button>
+          <button class="icon-btn primary-bg" onclick="showAddContact()" title="Add contact">
+            <svg viewBox="0 0 24 24"><path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+          </button>
+        </div>
+      </div>
+      <!-- Search bar -->
+      <div id="contact-search-bar" class="search-bar" style="display:none;">
+        <input type="text" id="contact-search-input" class="kree-input sm" placeholder="Search contacts..." oninput="filterContacts()" />
+      </div>
+      <!-- Add contact form (hidden) -->
+      <div id="add-contact-form" class="card" style="display:none;">
+        <input type="text" id="new-contact-name" class="kree-input sm" placeholder="Name" />
+        <input type="tel" id="new-contact-phone" class="kree-input sm" placeholder="Phone number" style="margin-top:8px;" />
+        <input type="email" id="new-contact-email" class="kree-input sm" placeholder="Email (optional)" style="margin-top:8px;" />
+        <div class="editor-actions" style="margin-top:10px;">
+          <button class="kree-btn sm outline" onclick="hideAddContact()">Cancel</button>
+          <button class="kree-btn sm primary" onclick="saveContact()">Save</button>
+        </div>
+      </div>
+      <!-- Sync banner -->
+      <div class="sync-banner" id="contacts-sync-banner">
+        <span id="contacts-sync-text">Not synced</span>
+      </div>
+      <!-- Contact list -->
+      <div id="contacts-list" class="contacts-list">
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- ═══ TAB: CONNECT ═══ -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div id="tab-connect" class="tab-page" style="display:none;">
+      <div class="tab-title" style="margin-bottom:16px;">BRIDGE CONNECTION</div>
+
+      <!-- Connection Status -->
+      <div class="card">
+        <div class="card-row">
+          <span class="card-label">STATUS</span>
+          <span class="badge" id="connect-status-badge">Disconnected</span>
+        </div>
+        <div class="settings-row" style="margin-top:10px;">
+          <span class="settings-label">Connection Type</span>
+          <span class="settings-value" id="connect-type">WiFi</span>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">Desktop IP</span>
+          <span class="settings-value" id="connect-ip">--</span>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">Latency</span>
+          <span class="settings-value" id="connect-latency">--</span>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">Connected Since</span>
+          <span class="settings-value" id="connect-since">--</span>
+        </div>
+      </div>
+
+      <!-- Connection Log -->
+      <div class="card">
+        <div class="card-label" style="margin-bottom:8px;">CONNECTION LOG</div>
+        <div id="connection-log" class="connection-log">
+          <div class="empty-state-sm">No connection history</div>
+        </div>
+      </div>
+
+      <!-- Auto-reconnect toggle -->
+      <div class="card">
+        <div class="card-row">
+          <span class="card-label">AUTO-RECONNECT</span>
+          <label class="toggle">
+            <input type="checkbox" id="auto-reconnect-toggle" checked />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <button id="disconnect-btn-connect" class="kree-btn danger" style="margin-top:12px; display:none;">DISCONNECT</button>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- ═══ TAB: FILE BRIDGE ═══ -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div id="tab-files" class="tab-page" style="display:none;">
+      <div class="tab-header-row">
+        <span class="tab-title">FILE BRIDGE</span>
+        <span class="badge green" id="file-bridge-status">Offline</span>
+      </div>
+
+      <!-- Send file to desktop -->
+      <div class="card file-drop-card">
+        <div class="card-label" style="margin-bottom:8px;">SEND TO DESKTOP</div>
+        <label class="file-drop-zone" id="file-drop-zone">
+          <svg viewBox="0 0 24 24" style="width:32px;height:32px;fill:var(--primary);opacity:0.4;"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
+          <div class="file-drop-text">Tap to select file</div>
+          <div class="file-drop-hint">Max 50MB per file</div>
+          <input type="file" id="file-input" style="display:none;" onchange="handleFileSelect(event)" />
+        </label>
+      </div>
+
+      <!-- Transfer progress -->
+      <div id="transfer-progress" class="card" style="display:none;">
+        <div class="card-row">
+          <span class="card-label" id="transfer-filename">Sending...</span>
+          <span class="card-sub" id="transfer-size"></span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="transfer-bar" style="width:0%;"></div>
+        </div>
+        <div class="card-sub" id="transfer-status">Preparing...</div>
+      </div>
+
+      <!-- Clipboard Sync -->
+      <div class="card clipboard-card">
+        <div class="card-row">
+          <span class="card-label">CLIPBOARD SYNC</span>
+          <button class="kree-btn sm primary" onclick="syncClipboard()">Sync Now</button>
+        </div>
+        <div id="clipboard-content-files" class="clipboard-preview">Tap to sync clipboard with desktop</div>
+      </div>
+
+      <!-- Files received from desktop -->
+      <div class="card">
+        <div class="card-label" style="margin-bottom:8px;">FILES FROM DESKTOP</div>
+        <div id="received-files" class="file-list">
+          <div class="empty-state-sm">No files received yet</div>
+        </div>
+      </div>
+
+      <!-- Transfer History -->
+      <div class="card">
+        <div class="card-label" style="margin-bottom:8px;">TRANSFER HISTORY</div>
+        <div id="transfer-history" class="file-list">
+          <div class="empty-state-sm">No transfers yet</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main-content -->
+
+  <!-- ══════ BOTTOM NAV ══════ -->
+  <nav id="bottom-nav" class="bottom-nav">
+    <button class="bnav-btn active" data-tab="dashboard">
+      <svg viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+      <span>Dashboard</span>
+    </button>
+    <button class="bnav-btn" data-tab="notes">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+      <span>Notes</span>
+    </button>
+    <button class="bnav-btn" data-tab="contacts">
+      <svg viewBox="0 0 24 24"><path d="M20 0H4v2h16V0zM4 24h16v-2H4v2zM20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 2.75c1.24 0 2.25 1.01 2.25 2.25s-1.01 2.25-2.25 2.25S9.75 9.24 9.75 8 10.76 6.75 12 6.75zM17 17H7v-1.5c0-1.67 3.33-2.5 5-2.5s5 .83 5 2.5V17z"/></svg>
+      <span>Contacts</span>
+    </button>
+    <button class="bnav-btn" data-tab="connect">
+      <svg viewBox="0 0 24 24"><path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg>
+      <span>Connect</span>
+    </button>
+    <button class="bnav-btn" data-tab="files">
+      <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
+      <span>Files</span>
+    </button>
+  </nav>
+
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+  </script>
+</body>
+</html>

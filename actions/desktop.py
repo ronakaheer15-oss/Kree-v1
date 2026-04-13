@@ -143,7 +143,19 @@ def _execute_generated_code(code: str) -> str:
     output_lines = []
     allowed_globals["print"] = lambda *args: output_lines.append(" ".join(str(a) for a in args))
 
+    # Security Sandboxing Confirmation
     try:
+        MB_OKCANCEL = 1
+        MB_ICONWARNING = 0x30
+        MB_TOPMOST = 0x40000
+        msg = f"Kree wants to execute the following automation code on your desktop:\n\n{code[:400]}\n\nAllow this action?"
+        title = "Kree Security Shield"
+        
+        # IDOK = 1
+        result = ctypes.windll.user32.MessageBoxW(0, msg, title, MB_OKCANCEL | MB_ICONWARNING | MB_TOPMOST)
+        if result != 1:
+            return "⛔ Execution blocked: User denied permission."
+            
         exec(code, allowed_globals)
         return "\n".join(output_lines) if output_lines else "Task completed successfully."
     except Exception as e:

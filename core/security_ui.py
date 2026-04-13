@@ -148,6 +148,39 @@ SETTINGS_MODAL_HTML = """
                 </div>
             </section>
 
+            <!-- SECTION: Intelligence Engine -->
+            <section>
+                <div class="flex items-center gap-3 mb-4">
+                    <span class="material-icons-outlined text-sm text-primary">psychology</span>
+                    <label class="font-mono text-[10px] uppercase tracking-[0.2em] text-primary font-bold">Intelligence Engine (Brain)</label>
+                    <div class="h-px flex-1 bg-gradient-to-r from-primary/30 to-transparent"></div>
+                </div>
+                
+                <div class="bg-black/30 rounded-xl border border-primary/20 p-5 shadow-[inset_0_0_20px_rgba(0,220,130,0.05)]">
+                    <div class="flex items-center justify-between mb-3">
+                        <p class="text-[11px] font-mono text-zinc-400 max-w-sm">Switch the core AI logic between Cloud Gemini API (Max power, Internet req) and Local Gemma 4 (100% Private, Hardware req, Ollama req).</p>
+                        <select id="kree-intelligence-mode" class="bg-zinc-950 border border-white/10 rounded-lg text-xs font-display font-bold uppercase tracking-wider text-white py-2 px-3 focus:outline-none focus:border-primary">
+                            <option value="CLOUD_GEMINI">Cloud Mode (Gemini API)</option>
+                            <option value="LOCAL_NEXUS_E4B">Nexus Mode (Gemma 4B / E4B)</option>
+                            <option value="LOCAL_CORE_26B">Core Mode (Gemma 26B MoE)</option>
+                            <option value="LOCAL_APEX_31B">Apex/God Mode (Gemma 31B)</option>
+                        </select>
+                    </div>
+                    <!-- Privacy Notice Sandbox -->
+                    <div class="mt-4 p-3 bg-white/5 rounded-lg border border-white/5 flex gap-3 items-start">
+                        <span class="material-icons-outlined text-zinc-500 text-sm mt-0.5">privacy_tip</span>
+                        <div>
+                            <p class="text-[10px] font-display font-bold uppercase text-zinc-300 mb-1">Security & Privacy Matrix</p>
+                            <p class="text-[10px] font-mono text-zinc-500 leading-relaxed">
+                                In <strong>Cloud Mode</strong>, screen and voice contexts are processed by Google's Gemini API via secure WebRTC. 
+                                In <strong>Local Mode</strong>, your data never leaves your physical hardware. 
+                                <em>Zero-trust sandboxing is enabled for generated automation code.</em>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- SECTION: Toggles -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 
@@ -159,7 +192,7 @@ SETTINGS_MODAL_HTML = """
                             <label class="font-display font-bold text-sm uppercase tracking-widest text-white">CRYPTOGRAPHIC FACE ID</label>
                         </div>
                         <label class="relative inline-flex items-center cursor-pointer">
-                            <input checked type="checkbox" class="sr-only peer">
+                            <input id="kree-faceid-toggle" checked type="checkbox" class="sr-only peer">
                             <div class="w-9 h-5 bg-zinc-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 peer-checked:after:bg-black after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary border border-white/10"></div>
                         </label>
                     </div>
@@ -168,6 +201,42 @@ SETTINGS_MODAL_HTML = """
                         <div class="w-1.5 h-1.5 rounded-full bg-primary blink"></div>
                         <span class="text-[9px] font-mono text-primary uppercase tracking-widest">Scanning Active</span>
                     </div>
+                </div>
+                
+                <!-- Kree Voice Identity -->
+                <div class="bg-black/30 p-5 rounded-xl border border-white/5 group hover:border-primary/30 transition shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <span class="material-icons-outlined text-primary text-[18px]">record_voice_over</span>
+                            <label class="font-display font-bold text-sm uppercase tracking-widest text-white">KREE VOCAL IDENTITY</label>
+                        </div>
+                        <div class="flex items-center gap-2 bg-zinc-900 rounded-lg p-1 border border-white/5 relative">
+                            <!-- Toggle Track -->
+                            <input id="kree-voice-toggle" type="checkbox" class="sr-only peer">
+                            <span class="z-10 px-3 cursor-pointer text-xs font-mono font-bold uppercase transition peer-checked:text-zinc-600 text-white" onclick="document.getElementById('kree-voice-toggle').checked=false; document.getElementById('kree-voice-toggle').dispatchEvent(new Event('change'))">[F]</span>
+                            <span class="z-10 px-3 cursor-pointer text-xs font-mono font-bold uppercase transition peer-checked:text-white text-zinc-600" onclick="document.getElementById('kree-voice-toggle').checked=true; document.getElementById('kree-voice-toggle').dispatchEvent(new Event('change'))">[M]</span>
+                            <div class="absolute w-1/2 h-[calc(100%-8px)] rounded bg-primary top-1 left-1 mix-blend-difference transition-transform peer-checked:translate-x-full"></div>
+                        </div>
+                    </div>
+                    <p class="text-[10px] font-mono text-zinc-500 mb-4">Switch Kree's Voice persona between Female (Kore) and Male (Puck).</p>
+                    <div class="flex items-center gap-2">
+                        <div class="w-1.5 h-1.5 rounded-full bg-primary blink"></div>
+                        <span class="text-[9px] font-mono text-primary uppercase tracking-widest">Restart Required</span>
+                    </div>
+                </div>
+                <!-- Bypass Boot Lock -->
+                <div class="bg-black/30 p-5 rounded-xl border border-white/5 group hover:border-yellow-500/30 transition shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <span class="material-icons-outlined text-yellow-500 text-[18px] shimmer">lock_open</span>
+                            <label class="font-display font-bold text-sm uppercase tracking-widest text-white">DISABLE LOCK SCREEN</label>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input id="kree-bypass-lock" type="checkbox" class="sr-only peer">
+                            <div class="w-9 h-5 bg-zinc-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 peer-checked:after:bg-black after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-yellow-500 border border-white/10"></div>
+                        </label>
+                    </div>
+                    <p class="text-[10px] font-mono text-zinc-500 mb-4">Permanently auto-bypass the secure vault PIN entry upon boot-up.</p>
                 </div>
 
                 <!-- Timer -->
@@ -186,6 +255,70 @@ SETTINGS_MODAL_HTML = """
                 </div>
             </div>
 
+            <!-- SECTION: Updates -->
+            <section>
+                <div class="flex items-center gap-3 mb-4">
+                    <span class="material-icons-outlined text-sm text-zinc-500">system_update_alt</span>
+                    <label class="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">Release Channel</label>
+                    <div class="h-px flex-1 bg-gradient-to-r from-white/10 to-transparent"></div>
+                </div>
+
+                <div class="bg-black/30 rounded-xl border border-white/5 p-5 space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
+                        <div class="space-y-2">
+                            <p class="text-[11px] font-mono text-zinc-400">Point Kree at your custom manifest URL to fetch signed release packages.</p>
+                            <input id="kree-update-url" class="w-full bg-black border border-white/10 rounded-xl py-3 px-4 text-xs font-mono focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-white placeholder-zinc-700" placeholder="https://updates.example.com/kree/manifest.json" type="text"/>
+                        </div>
+                        <button id="kree-update-save" class="w-full md:w-auto h-12 flex items-center justify-center gap-2 bg-white/5 hover:bg-primary/10 text-white hover:text-primary border border-white/10 hover:border-primary/30 font-display font-bold py-3 px-6 uppercase tracking-wider text-xs rounded-xl transition-all shadow-md">
+                            <span class="material-icons-outlined text-[16px]">save</span>
+                            Save Server
+                        </button>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div class="rounded-xl border border-white/5 bg-black/40 p-4">
+                            <div class="text-[9px] font-mono uppercase tracking-[0.2em] text-zinc-600 mb-2">Installed</div>
+                            <div id="kree-update-installed" class="font-display text-lg text-white">--</div>
+                        </div>
+                        <div class="rounded-xl border border-white/5 bg-black/40 p-4">
+                            <div class="text-[9px] font-mono uppercase tracking-[0.2em] text-zinc-600 mb-2">Latest</div>
+                            <div id="kree-update-latest" class="font-display text-lg text-white">--</div>
+                        </div>
+                        <div class="rounded-xl border border-white/5 bg-black/40 p-4">
+                            <div class="text-[9px] font-mono uppercase tracking-[0.2em] text-zinc-600 mb-2">Status</div>
+                            <div id="kree-update-status" class="font-mono text-xs text-zinc-300 leading-5">Idle</div>
+                        </div>
+                    </div>
+
+                    <div class="rounded-xl border border-white/5 bg-black/40 p-4 space-y-2">
+                        <div class="flex items-center justify-between gap-4">
+                            <div class="text-[9px] font-mono uppercase tracking-[0.2em] text-zinc-600">Release Notes</div>
+                            <div id="kree-update-checked" class="text-[9px] font-mono uppercase tracking-[0.2em] text-zinc-700">Not checked</div>
+                        </div>
+                        <p id="kree-update-notes" class="text-[11px] font-mono text-zinc-400 leading-6">No release notes loaded yet.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                        <button id="kree-update-check" class="h-12 flex items-center justify-center gap-2 bg-white/5 hover:bg-primary/10 text-white hover:text-primary border border-white/10 hover:border-primary/30 font-display font-bold py-3 px-6 uppercase tracking-wider text-xs rounded-xl transition-all shadow-md">
+                            <span class="material-icons-outlined text-[16px]">search</span>
+                            Check
+                        </button>
+                        <button id="kree-update-download" class="h-12 flex items-center justify-center gap-2 bg-white/5 hover:bg-primary/10 text-white hover:text-primary border border-white/10 hover:border-primary/30 font-display font-bold py-3 px-6 uppercase tracking-wider text-xs rounded-xl transition-all shadow-md">
+                            <span class="material-icons-outlined text-[16px]">download</span>
+                            Download
+                        </button>
+                        <button id="kree-update-apply" class="h-12 flex items-center justify-center gap-2 bg-primary/90 hover:bg-primary text-black font-display font-bold py-3 px-6 uppercase tracking-wider text-xs rounded-xl transition-all shadow-md">
+                            <span class="material-icons-outlined text-[16px]">system_update_alt</span>
+                            Install & Restart
+                        </button>
+                        <button id="kree-update-open" class="h-12 flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-white border border-white/10 hover:border-white/20 font-display font-bold py-3 px-6 uppercase tracking-wider text-xs rounded-xl transition-all shadow-md">
+                            <span class="material-icons-outlined text-[16px]">folder_open</span>
+                            Open Cache
+                        </button>
+                    </div>
+                </div>
+            </section>
+
         </div>
         
         <!-- Footer -->
@@ -193,6 +326,7 @@ SETTINGS_MODAL_HTML = """
             <div class="flex gap-4">
                 <div class="text-[9px] font-mono text-zinc-600 uppercase"><span class="text-zinc-400">Protocol:</span> SHA-512_KREE</div>
                 <div class="text-[9px] font-mono text-zinc-600 uppercase"><span class="text-zinc-400">Node:</span> ORBIT_772</div>
+                <div class="text-[9px] font-mono text-zinc-600 uppercase"><span class="text-zinc-400">App:</span> <span id="kree-app-version">--</span></div>
             </div>
             <div class="flex items-center gap-1.5">
                 <span class="w-1.5 h-1.5 rounded-full bg-primary blink"></span>
@@ -255,6 +389,19 @@ LOCK_SCREEN_JS = """
             if(required) {
                 isSetupMode = true;
                 if(statusText) statusText.textContent = "CREATE NEW MASTER PIN";
+            } else {
+                // Zero-Touch Biometrics Trigger Check
+                if (window.pywebview && window.pywebview.api && window.pywebview.api.load_audio_settings) {
+                    window.pywebview.api.load_audio_settings().then(settings => {
+                        if (settings && settings.auto_face_id === true) {
+                            setTimeout(() => {
+                                if (pinInput.length === 0 && document.getElementById('kree-vault-lock')) {
+                                    handleInput('face');
+                                }
+                            }, 600);
+                        }
+                    });
+                }
             }
         });
     }
@@ -383,6 +530,69 @@ SETTINGS_MODAL_JS = """
     
     const saveBtn = Array.from(modDiv.querySelectorAll('button')).find(b => b.textContent.includes('Save Sequence'));
     const pinInp = modDiv.querySelector('input[type="password"]');
+    
+    const faceToggle = modDiv.querySelector('#kree-faceid-toggle');
+    const voiceToggle = modDiv.querySelector('#kree-voice-toggle');
+    const bypassToggle = modDiv.querySelector('#kree-bypass-lock');
+    
+    // Load existing settings
+    if(window.pywebview && window.pywebview.api && window.pywebview.api.load_audio_settings) {
+        window.pywebview.api.load_audio_settings().then(settings => {
+            if (settings) {
+                if (faceToggle && settings.auto_face_id !== undefined) {
+                    faceToggle.checked = settings.auto_face_id;
+                }
+                if (voiceToggle && settings.kree_voice) {
+                    voiceToggle.checked = (settings.kree_voice === "Puck");
+                }
+                if (bypassToggle && settings.disable_lock_screen !== undefined) {
+                    bypassToggle.checked = settings.disable_lock_screen;
+                }
+                const brainSelect = modDiv.querySelector('#kree-intelligence-mode');
+                if (brainSelect && settings.intelligence_mode) {
+                    brainSelect.value = settings.intelligence_mode;
+                }
+            }
+        });
+    }
+
+    // Save logic
+    function saveAudioSettings(patch) {
+        if(window.pywebview && window.pywebview.api && window.pywebview.api.save_audio_settings) {
+            window.pywebview.api.save_audio_settings(patch);
+        }
+    }
+
+    const brainSelect = modDiv.querySelector('#kree-intelligence-mode');
+    if (brainSelect) {
+        brainSelect.addEventListener('change', (e) => {
+            saveAudioSettings({ intelligence_mode: e.target.value });
+            
+            // Show a visual warning if they select a local mode
+            if(e.target.value.includes('LOCAL')) {
+                alert("LOCAL MODE ENABLED.\\n\\nKree will now route intelligence to localhost:11434.\\nPlease ensure Ollama is installed and running with the appropriate Gemma 4 model.");
+            }
+        });
+    }
+
+    if (faceToggle) {
+        faceToggle.addEventListener('change', (e) => {
+            saveAudioSettings({ auto_face_id: e.target.checked });
+        });
+    }
+
+    if (voiceToggle) {
+        voiceToggle.addEventListener('change', (e) => {
+            const voice = e.target.checked ? "Puck" : "Kore";
+            saveAudioSettings({ kree_voice: voice });
+        });
+    }
+
+    if (bypassToggle) {
+        bypassToggle.addEventListener('change', (e) => {
+            saveAudioSettings({ disable_lock_screen: e.target.checked });
+        });
+    }
     if (saveBtn && pinInp) {
         saveBtn.addEventListener('click', () => {
             const newPin = pinInp.value.trim();
@@ -397,5 +607,96 @@ SETTINGS_MODAL_JS = """
             }
         });
     }
+
+    const updateState = {
+        manifestUrl: '',
+        downloadPath: ''
+    };
+
+    const updateUrl = modDiv.querySelector('#kree-update-url');
+    const updateInstalled = modDiv.querySelector('#kree-update-installed');
+    const updateLatest = modDiv.querySelector('#kree-update-latest');
+    const updateStatus = modDiv.querySelector('#kree-update-status');
+    const updateChecked = modDiv.querySelector('#kree-update-checked');
+    const updateNotes = modDiv.querySelector('#kree-update-notes');
+    const appVersion = modDiv.querySelector('#kree-app-version');
+    const updateSave = modDiv.querySelector('#kree-update-save');
+    const updateCheck = modDiv.querySelector('#kree-update-check');
+    const updateDownload = modDiv.querySelector('#kree-update-download');
+    const updateApply = modDiv.querySelector('#kree-update-apply');
+    const updateOpen = modDiv.querySelector('#kree-update-open');
+
+    function renderUpdateState(state) {
+        if (!state) return;
+        updateState.manifestUrl = state.manifest_url || updateState.manifestUrl || '';
+        updateState.downloadPath = state.download_path || updateState.downloadPath || '';
+        if (updateUrl) updateUrl.value = updateState.manifestUrl;
+        if (updateInstalled) updateInstalled.textContent = state.installed_version || '--';
+        if (updateLatest) updateLatest.textContent = state.latest_version || '--';
+        if (updateStatus) updateStatus.textContent = state.status || 'Idle';
+        if (updateChecked) updateChecked.textContent = state.last_checked ? ('Checked ' + state.last_checked) : 'Not checked';
+        if (updateNotes) updateNotes.textContent = state.notes || 'No release notes loaded yet.';
+        if (appVersion) appVersion.textContent = state.installed_version || '--';
+    }
+
+    function refreshUpdateState() {
+        if (!window.pywebview || !window.pywebview.api || !window.pywebview.api.get_update_state) return;
+        window.pywebview.api.get_update_state().then(renderUpdateState).catch(() => {});
+    }
+
+    function callUpdateAction(action, manifestUrl) {
+        if (!window.pywebview || !window.pywebview.api || !window.pywebview.api[action]) return Promise.resolve(null);
+        const url = (manifestUrl || (updateUrl && updateUrl.value) || '').trim();
+        return window.pywebview.api[action](url).then(function(result) {
+            refreshUpdateState();
+            return result;
+        });
+    }
+
+    if (updateSave) {
+        updateSave.addEventListener('click', function() {
+            callUpdateAction('save_update_server_url').then(function() {
+                refreshUpdateState();
+            });
+        });
+    }
+
+    if (updateCheck) {
+        updateCheck.addEventListener('click', function() {
+            callUpdateAction('check_for_updates').then(function() {
+                refreshUpdateState();
+            });
+        });
+    }
+
+    if (updateDownload) {
+        updateDownload.addEventListener('click', function() {
+            callUpdateAction('download_update').then(function() {
+                refreshUpdateState();
+            });
+        });
+    }
+
+    if (updateApply) {
+        updateApply.addEventListener('click', function() {
+            if (window.pywebview && window.pywebview.api && window.pywebview.api.apply_update) {
+                window.pywebview.api.apply_update().then(function() {
+                    refreshUpdateState();
+                });
+            }
+        });
+    }
+
+    if (updateOpen) {
+        updateOpen.addEventListener('click', function() {
+            if (window.pywebview && window.pywebview.api && window.pywebview.api.open_update_folder) {
+                window.pywebview.api.open_update_folder().then(function() {
+                    refreshUpdateState();
+                });
+            }
+        });
+    }
+
+    refreshUpdateState();
 })();
 """

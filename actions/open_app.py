@@ -20,9 +20,11 @@ _APP_ALIASES = {
     "github":             {"Windows": "GitHubDesktop.exe",      "Darwin": "GitHub Desktop",      "Linux": "github-desktop"},
     "github desktop":     {"Windows": "GitHubDesktop.exe",      "Darwin": "GitHub Desktop",      "Linux": "github-desktop"},
     "whatsapp":           {"Windows": "WhatsApp",               "Darwin": "WhatsApp",            "Linux": "whatsapp"},
-    "chrome":             {"Windows": "chrome",                 "Darwin": "Google Chrome",       "Linux": "google-chrome"},
-    "google chrome":      {"Windows": "chrome",                 "Darwin": "Google Chrome",       "Linux": "google-chrome"},
-    "firefox":            {"Windows": "firefox",                "Darwin": "Firefox",             "Linux": "firefox"},
+    "crome":              {"Windows": "chrome",                 "Darwin": "Google Chrome",       "Linux": "google-chrome"},
+    "chorme":             {"Windows": "chrome",                 "Darwin": "Google Chrome",       "Linux": "google-chrome"},
+    "vs code":            {"Windows": "code",                   "Darwin": "Visual Studio Code",  "Linux": "code"},
+    "notepad++":          {"Windows": "notepad++",              "Darwin": "TextEdit",            "Linux": "gedit"},
+    "vscode":             {"Windows": "code",                   "Darwin": "Visual Studio Code",  "Linux": "code"},
     "spotify":            {"Windows": "Spotify",                "Darwin": "Spotify",             "Linux": "spotify"},
     "vscode":             {"Windows": "code",                   "Darwin": "Visual Studio Code",  "Linux": "code"},
     "visual studio code": {"Windows": "code",                   "Darwin": "Visual Studio Code",  "Linux": "code"},
@@ -139,7 +141,6 @@ def _launch_windows(app_name: str) -> bool:
         if not programs.exists():
             return None
 
-        # Fast known vendor folders first
         fast_candidates = [
             programs / 'ChatGPT' / exe,
             programs / 'GitHub Desktop' / exe,
@@ -149,13 +150,6 @@ def _launch_windows(app_name: str) -> bool:
             if p.exists():
                 return str(p)
 
-        # Fallback search within Programs tree
-        try:
-            for p in programs.rglob(exe):
-                if p.is_file():
-                    return str(p)
-        except Exception:
-            pass
         return None
     
     # Fast-Path: UWP URIs
@@ -278,16 +272,23 @@ _OS_LAUNCHERS = {
 }
 
 
-def open_app(
-    parameters=None,
-    response=None,
-    player=None,
-    session_memory=None,
-) -> str:
-    app_name = (parameters or {}).get("app_name", "").strip()
-
+def _open_single_app(app_name: str, player=None) -> str:
     if not app_name:
         return "Please specify which application to open, sir."
+
+    lower_app = app_name.lower()
+    mobile_keywords = ["mobile", "phone", "ios", "iphone", "ipad", "android", "my device"]
+    is_mobile = any(kw in lower_app for kw in mobile_keywords)
+    if is_mobile:
+        clean_target = lower_app
+        for kw in ["in mobile", "on mobile", "in phone", "on phone", "in ios", "on ios",
+                    "in iphone", "on iphone", "in ipad", "on ipad", "in android", "on android",
+                    "in my device", "on my device", "my mobile", "my phone",
+                    "mobile", "ios", "iphone", "ipad", "android"]:
+            clean_target = clean_target.replace(kw, "")
+        clean_target = clean_target.strip().strip(".,!?")
+        if clean_target:
+            return f"__BROADCAST_INTENT__:{clean_target}"
 
     system   = platform.system()
     launcher = _OS_LAUNCHERS.get(system)
@@ -297,6 +298,29 @@ def open_app(
 
     normalized = _normalize(app_name)
     print(f"[open_app] 🚀 Launching: {app_name} → {normalized} ({system})")
+    
+    # [Dynamic Custom Chrome Profile Bypasser]
+    if "chrome" in normalized:
+        import core.user_profile as up
+        profile = up.get_user_profile()
+        target_profile = profile.get("browser_profile", "Default")
+        
+        try:
+            import subprocess
+            import shutil
+            chrome_exe = profile.get("browser") or shutil.which("chrome") or shutil.which("google-chrome")
+            if chrome_exe:
+                # If they asked for a specific site (e.g. "gmail in chrome")
+                if "gmail" in app_name.lower() or "email" in app_name.lower():
+                    subprocess.Popen([chrome_exe, f"--profile-directory={target_profile}", "https://gmail.com"])
+                elif "youtube" in app_name.lower():
+                    subprocess.Popen([chrome_exe, f"--profile-directory={target_profile}", "https://youtube.com"])
+                else:
+                    subprocess.Popen([chrome_exe, f"--profile-directory={target_profile}"])
+                
+                return f"Opened Chrome securely to {target_profile}, sir."
+        except Exception as e:
+            print(f"[open_app] ⚠️ Dynamic Chrome fail, falling back: {e}")
 
     if player:
         player.write_log(f"[open_app] {app_name}")
@@ -323,3 +347,35 @@ def open_app(
     except Exception as e:
         print(f"[open_app] ❌ {e}")
         return f"Failed to open {app_name}, sir: {e}"
+
+
+def open_app(
+    parameters=None,
+    response=None,
+    player=None,
+    session_memory=None,
+) -> str:
+    app_name = (parameters or {}).get("app_name", "").strip()
+
+    if not app_name:
+        return "Please specify which application to open, sir."
+
+    import re
+    # Split on " and ", commas, or semicolons
+    raw_apps = re.split(r'\s+and\s+|,|;', app_name)
+    apps_to_open = [a.strip() for a in raw_apps if a.strip()]
+
+    results = []
+    # If the user's intent to open multiple apps was embedded in one command ("open Chrome and VS code"), 
+    # we un-nest it here to ensure both apps actually launch properly in sequence.
+    for target_app in apps_to_open:
+        res = _open_single_app(target_app, player=player)
+        # Mobile intents override the entire flow
+        if res.startswith("__BROADCAST_INTENT__"):
+            return res
+        results.append(res)
+
+    if len(results) == 1:
+        return results[0]
+    
+    return "\n".join(results)

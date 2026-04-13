@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>KREE AI | System Lock</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Manrope:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-surface-variant": "#adaaad",
+              "on-tertiary-fixed": "#002f39",
+              "error-container": "#9f0519",
+              "secondary-dim": "#53e7b1",
+              "on-secondary": "#005a40",
+              "error": "#ff716c",
+              "surface-variant": "#262528",
+              "tertiary-container": "#00d5fd",
+              "on-secondary-fixed-variant": "#006548",
+              "error-dim": "#d7383b",
+              "secondary-fixed-dim": "#53e7b1",
+              "secondary-container": "#006c4d",
+              "inverse-on-surface": "#565457",
+              "secondary-fixed": "#64f6be",
+              "on-tertiary-container": "#004553",
+              "on-primary": "#005b32",
+              "inverse-primary": "#006e3e",
+              "on-primary-fixed": "#004625",
+              "primary-fixed": "#46fa9c",
+              "on-primary-fixed-variant": "#006639",
+              "inverse-surface": "#fcf8fb",
+              "primary-fixed-dim": "#2feb8f",
+              "secondary": "#64f6be",
+              "on-surface": "#f9f5f8",
+              "on-secondary-fixed": "#004530",
+              "primary-dim": "#2feb8f",
+              "on-secondary-container": "#e0ffed",
+              "surface-container-low": "#131315",
+              "tertiary": "#72e0ff",
+              "surface": "#0e0e10",
+              "surface-container-lowest": "#000000",
+              "surface-dim": "#0e0e10",
+              "background": "#0e0e10",
+              "primary-container": "#12e085",
+              "on-error-container": "#ffa8a3",
+              "primary": "#46fa9c",
+              "tertiary-fixed": "#00d5fd",
+              "surface-container": "#19191c",
+              "surface-bright": "#2c2c2f",
+              "surface-tint": "#46fa9c",
+              "on-tertiary": "#004f5f",
+              "tertiary-fixed-dim": "#00c7ec",
+              "surface-container-highest": "#262528",
+              "on-primary-container": "#004927",
+              "outline": "#767577",
+              "on-error": "#490006",
+              "outline-variant": "#48474a",
+              "surface-container-high": "#1f1f22",
+              "on-background": "#f9f5f8",
+              "on-tertiary-fixed-variant": "#004e5f",
+              "tertiary-dim": "#00c7ec"
+            },
+            fontFamily: {
+              "headline": ["Space Grotesk"],
+              "body": ["Manrope"],
+              "label": ["Space Grotesk"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 200, 'GRAD' 0, 'opsz' 24;
+        }
+        .tech-grid {
+            background-image: radial-gradient(#46fa9c 0.5px, transparent 0.5px);
+            background-size: 24px 24px;
+        }
+        .hex-border {
+            clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+        }
+        .ease-out-expo {
+            transition-timing-function: cubic-bezier(0.19, 1, 0.22, 1);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface font-body selection:bg-primary selection:text-on-primary min-h-screen overflow-hidden">
+<!-- Background Layer with Tech Grid -->
+<div class="fixed inset-0 z-0 tech-grid opacity-[0.03]"></div>
+<div class="fixed inset-0 z-0 bg-gradient-to-b from-surface-container-lowest via-surface to-surface-container-lowest opacity-90"></div>
+<!-- Top App Bar (Shared Component) -->
+<header class="fixed top-0 w-full z-50 bg-transparent backdrop-blur-xl flex justify-between items-center px-6 h-16 w-full">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[#00DC82]" style="font-variation-settings: 'FILL' 0;">lock_open</span>
+<span class="font-['Space_Grotesk'] font-bold tracking-tighter text-[#00DC82] uppercase text-sm">KREE AI SYSTEM</span>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2">
+<div class="relative flex h-2 w-2">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+</div>
+<span class="font-label text-[10px] tracking-[0.2em] text-on-surface-variant uppercase">SYSTEM LOCKED</span>
+</div>
+<span class="material-symbols-outlined text-[#00DC82]" style="font-variation-settings: 'FILL' 0;">sensors</span>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="relative z-10 flex flex-col items-center justify-center min-h-screen p-6">
+<!-- Centerpiece: Hexagonal Shield -->
+<div class="relative group mb-12">
+<!-- Pulsing Rings -->
+<div class="absolute inset-0 flex items-center justify-center">
+<div class="w-64 h-64 rounded-full border border-primary/10 animate-[ping_3s_linear_infinite]"></div>
+<div class="w-80 h-80 rounded-full border border-primary/5 animate-[ping_4s_linear_infinite]"></div>
+</div>
+<!-- Hex Shield -->
+<div class="relative w-48 h-56 hex-border bg-surface-container-low flex items-center justify-center shadow-[0_0_50px_rgba(70,250,156,0.1)] border border-primary/20">
+<div class="w-40 h-48 hex-border bg-surface-container-high flex items-center justify-center border border-primary/40">
+<div class="flex flex-col items-center">
+<span class="material-symbols-outlined text-primary text-6xl mb-2" style="font-variation-settings: 'FILL' 1;">shield_with_heart</span>
+<div class="font-label text-[10px] tracking-[0.3em] text-primary/60 uppercase">AES-256</div>
+</div>
+</div>
+<!-- Glowing Accents -->
+<div class="absolute top-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-primary shadow-[0_0_15px_#46fa9c]"></div>
+<div class="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-primary shadow-[0_0_15px_#46fa9c]"></div>
+</div>
+</div>
+<!-- Glassmorphic Panel -->
+<div class="w-full max-w-md bg-surface-container/60 backdrop-blur-2xl border border-outline-variant/15 p-8 rounded-sm shadow-2xl">
+<div class="text-center mb-8">
+<h1 class="font-headline text-2xl font-bold tracking-tight text-on-surface mb-2 uppercase">Aegis Protocol</h1>
+<p class="font-label text-[10px] tracking-widest text-on-surface-variant uppercase">Biometric &amp; Cipher Verification Required</p>
+</div>
+<!-- Input Field -->
+<div class="mb-8">
+<label class="font-label text-[10px] tracking-[0.2em] text-on-surface-variant uppercase mb-4 block">AEGIS MASTER PIN</label>
+<div class="flex justify-between items-center gap-4 px-2">
+<div class="w-3 h-3 rounded-full bg-primary shadow-[0_0_8px_#46fa9c]"></div>
+<div class="w-3 h-3 rounded-full bg-primary shadow-[0_0_8px_#46fa9c]"></div>
+<div class="w-3 h-3 rounded-full bg-primary shadow-[0_0_8px_#46fa9c]"></div>
+<div class="w-3 h-3 rounded-full bg-surface-container-highest"></div>
+<div class="w-3 h-3 rounded-full bg-surface-container-highest"></div>
+<div class="w-3 h-3 rounded-full bg-surface-container-highest"></div>
+</div>
+<div class="mt-6 h-[1px] w-full bg-surface-container-highest overflow-hidden">
+<div class="h-full w-1/2 bg-primary shadow-[0_0_10px_#46fa9c]"></div>
+</div>
+</div>
+<!-- Numeric Grid (Asymmetric Layout) -->
+<div class="grid grid-cols-3 gap-4 mb-8">
+<button class="h-12 flex items-center justify-center font-headline text-lg hover:bg-primary/10 hover:text-primary transition-all duration-300 ease-out-expo border border-outline-variant/5">1</button>
+<button class="h-12 flex items-center justify-center font-headline text-lg hover:bg-primary/10 hover:text-primary transition-all duration-300 ease-out-expo border border-outline-variant/5">2</button>
+<button class="h-12 flex items-center justify-center font-headline text-lg hover:bg-primary/10 hover:text-primary transition-all duration-300 ease-out-expo border border-outline-variant/5">3</button>
+<button class="h-12 flex items-center justify-center font-headline text-lg hover:bg-primary/10 hover:text-primary transition-all duration-300 ease-out-expo border border-outline-variant/5">4</button>
+<button class="h-12 flex items-center justify-center font-headline text-lg hover:bg-primary/10 hover:text-primary transition-all duration-300 ease-out-expo border border-outline-variant/5">5</button>
+<button class="h-12 flex items-center justify-center font-headline text-lg hover:bg-primary/10 hover:text-primary transition-all duration-300 ease-out-expo border border-outline-variant/5">6</button>
+<button class="h-12 flex items-center justify-center font-headline text-lg hover:bg-primary/10 hover:text-primary transition-all duration-300 ease-out-expo border border-outline-variant/5">7</button>
+<button class="h-12 flex items-center justify-center font-headline text-lg hover:bg-primary/10 hover:text-primary transition-all duration-300 ease-out-expo border border-outline-variant/5">8</button>
+<button class="h-12 flex items-center justify-center font-headline text-lg hover:bg-primary/10 hover:text-primary transition-all duration-300 ease-out-expo border border-outline-variant/5">9</button>
+<button class="h-12 flex items-center justify-center font-headline text-lg hover:bg-primary/10 hover:text-primary transition-all duration-300 ease-out-expo border border-outline-variant/5">
+<span class="material-symbols-outlined text-sm">backspace</span>
+</button>
+<button class="h-12 flex items-center justify-center font-headline text-lg hover:bg-primary/10 hover:text-primary transition-all duration-300 ease-out-expo border border-outline-variant/5">0</button>
+<button class="h-12 flex items-center justify-center font-headline text-lg hover:bg-primary/10 hover:text-primary transition-all duration-300 ease-out-expo border border-outline-variant/5">
+<span class="material-symbols-outlined text-sm">fingerprint</span>
+</button>
+</div>
+<!-- Action Button -->
+<button class="w-full h-14 bg-gradient-to-r from-primary to-primary-container text-on-primary font-headline font-bold uppercase tracking-[0.2em] rounded-sm shadow-[0_0_20px_rgba(70,250,156,0.3)] hover:shadow-[0_0_35px_rgba(70,250,156,0.5)] active:scale-95 transition-all duration-300 ease-out-expo flex items-center justify-center gap-3 group">
+                UNLOCK SYSTEM
+                <span class="material-symbols-outlined group-hover:translate-x-1 transition-transform">keyboard_double_arrow_right</span>
+</button>
+</div>
+</main>
+<!-- Bottom Nav Bar (Shared Component) -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-8 pb-8 pt-4 bg-[#131315]/60 backdrop-blur-xl border-t border-zinc-800/20 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]">
+<button class="flex items-center justify-center text-zinc-600 w-12 h-12 hover:scale-110 transition-transform">
+<span class="material-symbols-outlined">fingerprint</span>
+</button>
+<button class="flex items-center justify-center bg-zinc-900/80 text-[#00DC82] rounded-full w-12 h-12 shadow-[0_0_15px_rgba(70,250,156,0.2)] hover:scale-110 transition-transform">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">shield_with_heart</span>
+</button>
+<button class="flex items-center justify-center text-zinc-600 w-12 h-12 hover:scale-110 transition-transform">
+<span class="material-symbols-outlined">emergency_home</span>
+</button>
+</nav>
+<!-- Footer Status -->
+<footer class="fixed bottom-24 w-full flex justify-center pointer-events-none">
+<div class="flex flex-col items-center gap-1 opacity-50">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[10px] text-primary">verified_user</span>
+<span class="font-label text-[9px] tracking-[0.4em] text-on-surface uppercase">SECURE CONNECTION ACTIVE</span>
+</div>
+<span class="font-label text-[8px] tracking-[0.2em] text-on-surface-variant uppercase">LATENCY: 14MS // ENCRYPTION: ACTIVE</span>
+</div>
+</footer>
+</body></html>
