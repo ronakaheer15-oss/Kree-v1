@@ -10,7 +10,7 @@ from pathlib import Path
 from core.version import APP_NAME, APP_VERSION
 
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent
 DIST_DIR = ROOT / "dist"
 SOURCE_DIR = DIST_DIR / "Kree AI"
 RELEASE_DIR = DIST_DIR / "release"
