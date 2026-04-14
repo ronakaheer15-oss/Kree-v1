@@ -71,26 +71,63 @@ from core.telemetry import TelemetryEvents, TelemetryLogger, export_session_trac
 
 from agent.task_queue import get_queue  # type: ignore[import]
 
-from actions.flight_finder import flight_finder  # type: ignore[import]
-from actions.open_app         import open_app  # type: ignore[import]
-from actions.downloader_updater import downloader_updater  # type: ignore[import]
-from actions.turboquant_helper import turboquant_helper  # type: ignore[import]
-from actions.openapps_automation import openapps_automation  # type: ignore[import]
-from actions.weather_report   import weather_action  # type: ignore[import]
-from actions.send_message     import send_message  # type: ignore[import]
-from actions.reminder         import reminder  # type: ignore[import]
-from actions.computer_settings import computer_settings  # type: ignore[import]
-from actions.screen_processor import screen_process  # type: ignore[import]
-from actions.youtube_video    import youtube_video  # type: ignore[import]
-from actions.cmd_control      import cmd_control  # type: ignore[import]
-from actions.desktop          import desktop_control  # type: ignore[import]
-from actions.browser_control  import browser_control  # type: ignore[import]
-from actions.file_controller  import file_controller  # type: ignore[import]
-from actions.code_helper      import code_helper  # type: ignore[import]
-from actions.dev_agent        import dev_agent  # type: ignore[import]
-from actions.web_search       import web_search as web_search_action  # type: ignore[import]
-from actions.computer_control import computer_control  # type: ignore[import]
-from actions.email_calendar   import productivity_manager  # type: ignore[import]
+
+class LazyToolLoader:
+    def __getattr__(self, name):
+        def wrapper(*args, **kwargs):
+            import importlib
+            module_map = {
+                "flight_finder": ("actions.flight_finder", "flight_finder"),
+                "open_app": ("actions.open_app", "open_app"),
+                "downloader_updater": ("actions.downloader_updater", "downloader_updater"),
+                "turboquant_helper": ("actions.turboquant_helper", "turboquant_helper"),
+                "openapps_automation": ("actions.openapps_automation", "openapps_automation"),
+                "weather_action": ("actions.weather_report", "weather_action"),
+                "send_message": ("actions.send_message", "send_message"),
+                "reminder": ("actions.reminder", "reminder"),
+                "computer_settings": ("actions.computer_settings", "computer_settings"),
+                "screen_process": ("actions.screen_processor", "screen_process"),
+                "youtube_video": ("actions.youtube_video", "youtube_video"),
+                "cmd_control": ("actions.cmd_control", "cmd_control"),
+                "desktop_control": ("actions.desktop", "desktop_control"),
+                "browser_control": ("actions.browser_control", "browser_control"),
+                "file_controller": ("actions.file_controller", "file_controller"),
+                "code_helper": ("actions.code_helper", "code_helper"),
+                "dev_agent": ("actions.dev_agent", "dev_agent"),
+                "web_search_action": ("actions.web_search", "web_search_action"),
+                "computer_control": ("actions.computer_control", "computer_control"),
+                "productivity_manager": ("actions.email_calendar", "productivity_manager")
+            }
+            if name in module_map:
+                mod_name, func_name = module_map[name]
+                mod = importlib.import_module(mod_name)
+                func = getattr(mod, func_name)
+                return func(*args, **kwargs)
+            raise AttributeError(f"Tool {name} not found")
+        return wrapper
+
+lazy_tools = LazyToolLoader()
+flight_finder = lazy_tools.flight_finder
+open_app = lazy_tools.open_app
+downloader_updater = lazy_tools.downloader_updater
+turboquant_helper = lazy_tools.turboquant_helper
+openapps_automation = lazy_tools.openapps_automation
+weather_action = lazy_tools.weather_action
+send_message = lazy_tools.send_message
+reminder = lazy_tools.reminder
+computer_settings = lazy_tools.computer_settings
+screen_process = lazy_tools.screen_process
+youtube_video = lazy_tools.youtube_video
+cmd_control = lazy_tools.cmd_control
+desktop_control = lazy_tools.desktop_control
+browser_control = lazy_tools.browser_control
+file_controller = lazy_tools.file_controller
+code_helper = lazy_tools.code_helper
+dev_agent = lazy_tools.dev_agent
+web_search_action = lazy_tools.web_search_action
+computer_control = lazy_tools.computer_control
+productivity_manager = lazy_tools.productivity_manager
+
 from core.trigger_engine import TriggerEngine
 
 def get_base_dir():
@@ -214,7 +251,7 @@ def _local_speech_voice(text: str) -> None:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
-                loop.run_until_complete(edge_tts.Communicate(text, voice).save(str(temp_mp3)))
+                loop.run_until_complete(edge_tts.Communicate(text, voice, rate="-15%").save(str(temp_mp3)))
             finally:
                 loop.close()
             
@@ -311,6 +348,12 @@ def _build_contextual_greeting(name: str = "sir") -> str:
         activity_context = "coding"
     elif "spotify" in active_title or "music" in active_title:
         activity_context = "music"
+    elif any(g in active_title for g in ("steam", "epic games", "riot", "valorant", "minecraft", "fortnite", "game")):
+        activity_context = "gaming"
+    elif any(s in active_title for s in ("instagram", "twitter", "facebook", "reddit", "whatsapp", "telegram", "discord")):
+        activity_context = "social"
+    elif any(b in active_title for b in ("chrome", "firefox", "edge", "brave", "opera", "safari")):
+        activity_context = "browsing"
 
     # Fallback to tasklist if foreground detection yields nothing specific
     if not activity_context:
@@ -324,6 +367,8 @@ def _build_contextual_greeting(name: str = "sir") -> str:
                 activity_context = "coding"
             elif "spotify.exe" in tasklist:
                 activity_context = "music"
+            elif any(g in tasklist for g in ("steam.exe", "epicgameslauncher", "riotclientservices")):
+                activity_context = "gaming"
         except Exception:
             pass
 
@@ -333,7 +378,10 @@ def _build_contextual_greeting(name: str = "sir") -> str:
     if activity_context == "low_battery":
         return random.choice([
             f"Sir, battery is extremely low. You might want to plug in.",
-            f"Battery critical, {name}. Please connect power."
+            f"Battery critical, {name}. Please connect power.",
+            f"We're running on fumes here, {name}. Plug in soon.",
+            f"{name}, battery's about to die. Better save your work.",
+            f"Power alert, {name}. We need a charger, stat."
         ])
 
     # Priority 2: Specific Foreground Activities
@@ -341,32 +389,77 @@ def _build_contextual_greeting(name: str = "sir") -> str:
         return random.choice([
             f"Enjoying the video, {name}?",
             f"Watching something interesting, {name}?",
-            f"Yes, {name}?"
+            f"Yes, {name}?",
+            f"Need me to find something else to watch, {name}?",
+            f"Want me to summarize that for you, {name}?",
+            f"Taking a break with some videos, {name}?",
+            f"I see you're on YouTube. What do you need, {name}?"
         ])
     elif activity_context == "github":
         return random.choice([
             f"Reviewing repositories, {name}?",
             f"Need help with GitHub, {name}?",
-            f"Looking at pull requests, {name}?"
+            f"Looking at pull requests, {name}?",
+            f"Pushing some code, {name}?",
+            f"Want me to help with that repo, {name}?",
+            f"I see you're on GitHub. Need a hand, {name}?",
+            f"Ship it, {name}. What do you need?"
         ])
     elif activity_context == "debugging":
         return random.choice([
             f"Need help debugging, {name}?",
             f"Stuck on a bug, {name}?",
-            f"What's the error say, {name}?"
+            f"What's the error say, {name}?",
+            f"Let's squash that bug together, {name}.",
+            f"Stack Overflow to the rescue, {name}?",
+            f"Debugging at this hour, {name}? Respect.",
+            f"Send me the error, {name}. I'll figure it out."
         ])
     elif activity_context == "coding":
         return random.choice([
             f"Back to the code, {name}?",
             f"What are we building, {name}?",
             f"Ready to code when you are, {name}.",
-            f"What do you need {name}?"
+            f"What do you need, {name}?",
+            f"In the zone, {name}? How can I help?",
+            f"Let's ship something great, {name}.",
+            f"Building the future one line at a time, {name}.",
+            f"Code mode activated. What's the task, {name}?",
+            f"I see VSCode is open. Need anything, {name}?"
         ])
     elif activity_context == "music":
         return random.choice([
             f"{name}?",
             f"Yes?",
-            f"I'm here."
+            f"I'm here.",
+            f"Enjoying the tunes, {name}?",
+            f"Good playlist. What do you need, {name}?",
+            f"I'm listening too, {name}. Well, sort of.",
+            f"Need me to change the vibe, {name}?"
+        ])
+    elif activity_context == "gaming":
+        return random.choice([
+            f"In the middle of a game, {name}?",
+            f"Need a quick assist, {name}?",
+            f"Don't worry, I'll keep it quick, {name}.",
+            f"Gaming session, nice. What's up, {name}?",
+            f"GG. What do you need, {name}?"
+        ])
+    elif activity_context == "browsing":
+        return random.choice([
+            f"Browsing the web, {name}?",
+            f"Found anything interesting, {name}?",
+            f"Need me to search something for you, {name}?",
+            f"Web surfing, {name}? I can help with that.",
+            f"What are you looking for, {name}?"
+        ])
+    elif activity_context == "social":
+        return random.choice([
+            f"Catching up on socials, {name}?",
+            f"Scrolling through the feed, {name}?",
+            f"Need me to draft a message, {name}?",
+            f"What's trending, {name}?",
+            f"Taking a social break? What do you need, {name}?"
         ])
 
     # Priority 3: Time & Day combinations
@@ -374,46 +467,90 @@ def _build_contextual_greeting(name: str = "sir") -> str:
         return random.choice([
             f"Monday morning, {name}. Ready to conquer the week?",
             f"Welcome to a new week, {name}.",
-            f"Monday morning, let's get started."
+            f"Monday morning, let's get started.",
+            f"New week, new goals. What's the plan, {name}?",
+            f"Rise and grind, {name}. It's Monday."
         ])
     elif day == 4 and hr > 16: # Friday Evening
         return random.choice([
             f"It's Friday evening, {name}. Almost time to relax.",
             f"Wrapping up the week, {name}?",
-            f"Friday evening, {name}. What's left?"
+            f"Friday evening, {name}. What's left?",
+            f"TGIF, {name}. Finishing up?",
+            f"Weekend's almost here, {name}. Need anything before we wrap?"
+        ])
+    elif day in (5, 6): # Weekend
+        return random.choice([
+            f"Weekend vibes, {name}. What are we doing?",
+            f"It's the weekend, {name}. Working or chilling?",
+            f"No rest for the ambitious, {name}?",
+            f"Weekend mode, {name}. How can I help?",
+            f"Even on the weekend, {name}? I respect the hustle."
         ])
 
     # Priority 4: Standard Time-based greetings
     if hr < 6:
         return random.choice([
-            f"Working late, {name}?",
-            f"Still up, {name}?",
-            f"It's quite late, {name}. What do you need?"
+            f"Burning the midnight oil, {name}?",
+            f"Still up, {name}? Dedicated.",
+            f"It's quite late, {name}. What do you need?",
+            f"Late night grind, {name}. I'm here for it.",
+            f"The world is sleeping, but not us, {name}.",
+            f"Night owl mode, {name}. What's on your mind?",
+            f"Can't sleep, {name}? Let's be productive then.",
+            f"It's past midnight, {name}. How can I help?"
         ])
     elif hr < 12:
         return random.choice([
             f"Good morning, {name}.",
             f"Morning, {name}. Ready to start?",
-            f"Good morning. What's the plan for today?"
+            f"Good morning. What's the plan for today?",
+            f"Top of the morning, {name}. What do you need?",
+            f"Rise and shine, {name}.",
+            f"Fresh day ahead, {name}. What's first?",
+            f"Morning, {name}. Let's make today count.",
+            f"Good morning, {name}. I'm all ears."
+        ])
+    elif hr < 14:
+        return random.choice([
+            f"Afternoon, {name}. What's next?",
+            f"Lunchtime productivity, {name}?",
+            f"Good afternoon, {name}. How can I help?",
+            f"Midday check-in, {name}. Need something?",
+            f"Afternoon, {name}. Let's keep the momentum going."
         ])
     elif hr < 18:
         return random.choice([
             f"Kree online, {name}.",
             f"Good afternoon, {name}.",
             f"Yes, {name}?",
-            f"How can I help you, {name}?"
+            f"How can I help you, {name}?",
+            f"Afternoon push, {name}. What do you need?",
+            f"Still going strong, {name}?",
+            f"At your service, {name}.",
+            f"Ready when you are, {name}."
         ])
     elif hr < 22:
         return random.choice([
             f"Good evening, {name}.",
             f"Evening, {name}. What's next?",
-            f"Yes, {name}?"
+            f"Yes, {name}?",
+            f"Winding down or gearing up, {name}?",
+            f"Evening session, {name}. How can I help?",
+            f"Good evening, {name}. What's on the agenda?",
+            f"Evening, {name}. I'm here whenever you need me.",
+            f"The evening is young, {name}. What shall we do?"
         ])
     else:
         return random.choice([
-            f"Still up, {name}?",
-            f"Working late, {name}?",
-            f"Good evening, {name}."
+            f"Still going, {name}? Impressive.",
+            f"Late night session, {name}?",
+            f"Good evening, {name}.",
+            f"Pulling an all-nighter, {name}?",
+            f"The night is dark, but Kree is awake, {name}.",
+            f"Need anything before bed, {name}?",
+            f"Night mode, {name}. What can I do for you?",
+            f"Late night, {name}. Let's make it count."
         ])
 
 class ContextTTSEngine:
@@ -518,586 +655,7 @@ def _update_memory_async(user_text: str, jarvis_text: str) -> None:
     threading.Thread(target=worker, daemon=True).start()
 
 
-TOOL_DECLARATIONS = [
-    {
-        "name": "trigger_macro",
-        "description": (
-            "Triggers a complex multi-app macro chain concurrently (e.g. 'work session', 'gaming session'). "
-            "Use this precisely when the user asks to initiate a 'session' or complex workflow."
-        ),
-        "parameters": {
-            "type": "OBJECT",
-            "properties": {
-                "chain_name": {
-                    "type": "STRING",
-                    "description": "The logical name of the chain (e.g. 'work session')"
-                }
-            },
-            "required": ["chain_name"]
-        }
-    },
-    {
-        "name": "open_app",
-        "description": (
-            "Opens any application on the Windows computer. "
-            "Use this whenever the user asks to open, launch, or start any app, "
-            "website, or program. Always call this tool — never just say you opened it."
-        ),
-        "parameters": {
-            "type": "OBJECT",
-            "properties": {
-                "app_name": {
-                    "type": "STRING",
-                    "description": "Exact name of the application (e.g. 'WhatsApp', 'Chrome', 'Spotify')"
-                }
-            },
-            "required": ["app_name"]
-        }
-    },
-    {
-        "name": "openapps_automation",
-        "description": (
-            "Controls OpenApps as an optional automation and multi-tasking engine. "
-            "Use this for simulated app workflows, benchmark tasks, or parallel agent tasks. "
-            "Do NOT replace native app opening with this tool. "
-            "User phrase alias: 'Start Kree automation environment'."
-        ),
-        "parameters": {
-            "type": "OBJECT",
-            "properties": {
-                "action": {
-                    "type": "STRING",
-                    "description": "launch_env | start_kree_automation_environment | run_task | run_parallel_tasks | run_preset | open_and_delegate | list_apps | list_agents | list_tasks | license_info | stop | status"
-                },
-                "app": {
-                    "type": "STRING",
-                    "description": "Optional OpenApps app name for launch_env (todo|calendar|maps|messenger|code_editor)"
-                },
-                "theme": {
-                    "type": "STRING",
-                    "description": "Optional UI theme for launch_env: dark | light"
-                },
-                "agent": {
-                    "type": "STRING",
-                    "description": "Agent config for run_task/run_parallel_tasks, e.g. GPT-5-1"
-                },
-                "task_name": {
-                    "type": "STRING",
-                    "description": "OpenApps benchmark task name for run_task"
-                },
-                "headless": {
-                    "type": "BOOLEAN",
-                    "description": "Set false to watch the run in a visible browser"
-                },
-                "timeout": {
-                    "type": "INTEGER",
-                    "description": "Timeout in seconds for run_task"
-                },
-                "extra": {
-                    "type": "STRING",
-                    "description": "Optional extra CLI overrides for run_parallel_tasks"
-                },
-                "preset": {
-                    "type": "STRING",
-                    "description": "Preset name for run_preset (e.g. codex_github_app_builder)"
-                },
-                "prompt": {
-                    "type": "STRING",
-                    "description": "Prompt for preset automation, e.g. app requirements for Codex"
-                },
-                "targets": {
-                    "type": "STRING",
-                    "description": "Apps/sites to open for open_and_delegate. Example: 'codex and github and vscode'"
-                },
-                "delegate_app": {
-                    "type": "STRING",
-                    "description": "Where to send instruction for open_and_delegate. Example: codex"
-                },
-                "fallback": {
-                    "type": "STRING",
-                    "description": "For missing native app: ask | download | browser"
-                }
-            },
-            "required": ["action"]
-        }
-    },
-    {
-        "name": "downloader_updater",
-        "description": (
-            "Downloads files and installs/updates software. "
-            "Use this when user asks to download, install, update, upgrade, or check available updates."
-        ),
-        "parameters": {
-            "type": "OBJECT",
-            "properties": {
-                "action": {
-                    "type": "STRING",
-                    "description": "download_file | download | install_app | update_app | update_all | check_updates | auto"
-                },
-                "url": {
-                    "type": "STRING",
-                    "description": "URL for download_file"
-                },
-                "destination": {
-                    "type": "STRING",
-                    "description": "Optional destination path for downloads"
-                },
-                "target": {
-                    "type": "STRING",
-                    "description": "App name or winget ID for install_app/update_app/download"
-                },
-                "query": {
-                    "type": "STRING",
-                    "description": "Natural language request for auto action (e.g., 'download github' or 'update vscode')"
-                }
-            },
-            "required": ["action"]
-        }
-    },
-    {
-        "name": "turboquant_helper",
-        "description": (
-            "Reports whether TurboQuant and HuggingFace-style tooling are available, "
-            "prepares cache directories, and returns loader environment hints. Use this when the user asks about TurboQuant or future local model setup."
-        ),
-        "parameters": {
-            "type": "OBJECT",
-            "properties": {
-                "action": {
-                    "type": "STRING",
-                    "description": "status | prepare_cache | environment | export"
-                },
-                "model_id": {
-                    "type": "STRING",
-                    "description": "Optional HuggingFace model id such as meta-llama/Llama-3.1-8B-Instruct"
-                },
-                "cache_root": {
-                    "type": "STRING",
-                    "description": "Optional cache root path for TurboQuant/HF assets"
-                }
-            },
-            "required": ["action"]
-        }
-    },
-    {
-        "name": "session_trace",
-        "description": (
-            "Captures, summarizes, or exports the current Kree session trace. "
-            "Use when the user asks to save a trace, export a session log, inspect recent events, or review what Kree did."
-        ),
-        "parameters": {
-            "type": "OBJECT",
-            "properties": {
-                "action": {
-                    "type": "STRING",
-                    "description": "summary | export | status"
-                },
-                "label": {
-                    "type": "STRING",
-                    "description": "Optional filename label for exports"
-                },
-                "limit": {
-                    "type": "INTEGER",
-                    "description": "Optional maximum number of events to include"
-                }
-            },
-            "required": ["action"]
-        }
-    },
-{
-    "name": "web_search",
-    "description": "Searches the web for any information.",
-    "parameters": {
-        "type": "OBJECT",
-        "properties": {
-            "query":  {"type": "STRING", "description": "Search query"},
-            "mode":   {"type": "STRING", "description": "search (default) or compare"},
-            "items":  {"type": "ARRAY", "items": {"type": "STRING"}, "description": "Items to compare"},
-            "aspect": {"type": "STRING", "description": "price | specs | reviews"}
-        },
-        "required": ["query"]
-    }
-},
-    {
-        "name": "weather_report",
-        "description": "Gets real-time weather information for a city.",
-        "parameters": {
-            "type": "OBJECT",
-            "properties": {
-                "city": {"type": "STRING", "description": "City name"}
-            },
-            "required": ["city"]
-        }
-    },
-    {
-        "name": "send_message",
-        "description": "Sends a text message via WhatsApp, Telegram, or other messaging platform.",
-        "parameters": {
-            "type": "OBJECT",
-            "properties": {
-                "receiver":     {"type": "STRING", "description": "Recipient contact name"},
-                "message_text": {"type": "STRING", "description": "The message to send"},
-                "platform":     {"type": "STRING", "description": "Platform: WhatsApp, Telegram, etc."}
-            },
-            "required": ["receiver", "message_text", "platform"]
-        }
-    },
-    {
-        "name": "reminder",
-        "description": "Sets a timed reminder using Windows Task Scheduler.",
-        "parameters": {
-            "type": "OBJECT",
-            "properties": {
-                "date":    {"type": "STRING", "description": "Date in YYYY-MM-DD format"},
-                "time":    {"type": "STRING", "description": "Time in HH:MM format (24h)"},
-                "message": {"type": "STRING", "description": "Reminder message text"}
-            },
-            "required": ["date", "time", "message"]
-        }
-    },
-    {
-    "name": "youtube_video",
-    "description": (
-        "Controls YouTube. Use for: playing videos, summarizing a video's content, "
-        "getting video info, or showing trending videos."
-    ),
-    "parameters": {
-        "type": "OBJECT",
-        "properties": {
-            "action": {
-                "type": "STRING",
-                "description": "play | summarize | get_info | trending (default: play)"
-            },
-            "query":  {"type": "STRING", "description": "Search query for play action"},
-            "save":   {"type": "BOOLEAN", "description": "Save summary to Notepad (summarize only)"},
-            "region": {"type": "STRING", "description": "Country code for trending e.g. TR, US"},
-            "url":    {"type": "STRING", "description": "Video URL for get_info action"},
-        },
-        "required": []
-    }
-    },
-    {
-        "name": "screen_process",
-        "description": (
-            "Captures and analyzes the screen or webcam image. "
-            "MUST be called when user asks what is on screen, what you see, "
-            "analyze my screen, look at camera, etc. "
-            "You have NO visual ability without this tool. "
-            "After calling this tool, stay SILENT — the vision module speaks directly."
-        ),
-        "parameters": {
-            "type": "OBJECT",
-            "properties": {
-                "angle": {
-                    "type": "STRING",
-                    "description": "'screen' to capture display, 'camera' for webcam. Default: 'screen'"
-                },
-                "text": {
-                    "type": "STRING",
-                    "description": "The question or instruction about the captured image"
-                }
-            },
-            "required": ["text"]
-        }
-    },
-    {
-    "name": "computer_settings",
-    "description": (
-        "Controls the computer: volume, brightness, window management, keyboard shortcuts, "
-        "typing text on screen, closing apps, fullscreen, dark mode, WiFi, restart, shutdown, "
-        "scrolling, tab management, zoom, screenshots, lock screen, refresh/reload page. "
-        "ALSO use for repeated actions: 'refresh 10 times', 'reload page 5 times' → action: reload_n, value: 10. "
-        "Use for ANY single computer control command — even if repeated N times. "
-        "NEVER route simple computer commands to agent_task."
-    ),
-    "parameters": {
-        "type": "OBJECT",
-        "properties": {
-            "action":      {"type": "STRING", "description": "The action to perform (if known). For repeated reload: 'reload_n'"},
-            "description": {"type": "STRING", "description": "Natural language description of what to do"},
-            "value":       {"type": "STRING", "description": "Optional value: volume level, text to type, number of times, etc."}
-        },
-        "required": []
-    }
-},
-    {
-        "name": "browser_control",
-        "description": (
-            "Controls the web browser. Use for: opening websites, searching the web, "
-            "clicking elements, filling forms, scrolling, finding cheapest products, "
-            "booking flights, any web-based task."
-        ),
-        "parameters": {
-            "type": "OBJECT",
-            "properties": {
-                "action":      {"type": "STRING", "description": "go_to | search | click | type | scroll | fill_form | smart_click | smart_type | get_text | press | close"},
-                "url":         {"type": "STRING", "description": "URL for go_to action"},
-                "query":       {"type": "STRING", "description": "Search query for search action"},
-                "selector":    {"type": "STRING", "description": "CSS selector for click/type"},
-                "text":        {"type": "STRING", "description": "Text to click or type"},
-                "description": {"type": "STRING", "description": "Element description for smart_click/smart_type"},
-                "direction":   {"type": "STRING", "description": "up or down for scroll"},
-                "key":         {"type": "STRING", "description": "Key name for press action"},
-            },
-            "required": ["action"]
-        }
-    },
-    {
-        "name": "file_controller",
-        "description": (
-            "Manages files and folders. Use for: listing files, creating/deleting/moving/copying "
-            "files, reading file contents, finding files by name or extension, checking disk usage, "
-            "organizing the desktop, getting file info."
-        ),
-        "parameters": {
-            "type": "OBJECT",
-            "properties": {
-                "action":      {"type": "STRING", "description": "list | create_file | create_folder | delete | move | copy | rename | read | write | find | largest | disk_usage | organize_desktop | info"},
-                "path":        {"type": "STRING", "description": "File/folder path or shortcut: desktop, downloads, documents, home"},
-                "destination": {"type": "STRING", "description": "Destination path for move/copy"},
-                "new_name":    {"type": "STRING", "description": "New name for rename"},
-                "content":     {"type": "STRING", "description": "Content for create_file/write"},
-                "name":        {"type": "STRING", "description": "File name to search for"},
-                "extension":   {"type": "STRING", "description": "File extension to search (e.g. .pdf)"},
-                "count":       {"type": "INTEGER", "description": "Number of results for largest"},
-            },
-            "required": ["action"]
-        }
-    },
-    {
-        "name": "cmd_control",
-        "description": (
-            "Runs CMD/terminal commands by understanding natural language. "
-            "Use when user wants to: find large files, check disk space, list processes, "
-            "get system info, navigate folders, check network, find files by name, "
-            "or do ANYTHING in the command line they don't know how to do themselves."
-        ),
-        "parameters": {
-            "type": "OBJECT",
-            "properties": {
-                "task":    {"type": "STRING", "description": "Natural language description of what to do. Example: 'find the 10 largest files on C drive'"},
-                "visible": {"type": "BOOLEAN", "description": "Open visible CMD window so user can see. Default: true"},
-                "command": {"type": "STRING", "description": "Optional: exact command if already known"},
-            },
-            "required": ["task"]
-        }
-    },
-    {
-        "name": "desktop_control",
-        "description": (
-            "Controls the desktop. Use for: changing wallpaper, organizing desktop files, "
-            "cleaning the desktop, listing desktop contents, or ANY other desktop-related task "
-            "the user describes in natural language."
-        ),
-        "parameters": {
-            "type": "OBJECT",
-            "properties": {
-                "action": {"type": "STRING", "description": "wallpaper | wallpaper_url | organize | clean | list | stats | task"},
-                "path":   {"type": "STRING", "description": "Image path for wallpaper"},
-                "url":    {"type": "STRING", "description": "Image URL for wallpaper_url"},
-                "mode":   {"type": "STRING", "description": "by_type or by_date for organize"},
-                "task":   {"type": "STRING", "description": "Natural language description of any desktop task"},
-            },
-            "required": ["action"]
-        }
-    },
-    {
-    "name": "code_helper",
-    "description": (
-        "Writes, edits, explains, runs, or self-builds code files. "
-        "Use for ANY coding request: writing a script, fixing a file, "
-        "editing existing code, running a file, or building and testing automatically."
-    ),
-    "parameters": {
-        "type": "OBJECT",
-        "properties": {
-            "action":      {"type": "STRING", "description": "write | edit | explain | run | build | auto (default: auto)"},
-            "description": {"type": "STRING", "description": "What the code should do, or what change to make"},
-            "language":    {"type": "STRING", "description": "Programming language (default: python)"},
-            "output_path": {"type": "STRING", "description": "Where to save the file (full path or filename)"},
-            "file_path":   {"type": "STRING", "description": "Path to existing file for edit / explain / run / build"},
-            "code":        {"type": "STRING", "description": "Raw code string for explain"},
-            "args":        {"type": "STRING", "description": "CLI arguments for run/build"},
-            "timeout":     {"type": "INTEGER", "description": "Execution timeout in seconds (default: 30)"},
-        },
-        "required": ["action"]
-    }
-    },
-    {
-    "name": "dev_agent",
-    "description": (
-        "Builds complete multi-file projects from scratch. "
-        "Plans structure, writes all files, installs dependencies, "
-        "opens VSCode, runs the project, and fixes errors automatically. "
-        "Use for any project larger than a single script."
-    ),
-    "parameters": {
-        "type": "OBJECT",
-        "properties": {
-            "description":  {"type": "STRING", "description": "What the project should do"},
-            "language":     {"type": "STRING", "description": "Programming language (default: python)"},
-            "project_name": {"type": "STRING", "description": "Optional project folder name"},
-            "timeout":      {"type": "INTEGER", "description": "Run timeout in seconds (default: 30)"},
-        },
-        "required": ["description"]
-    }
-    },
-    {
-    "name": "agent_task",
-    "description": (
-        "Executes complex multi-step tasks that require MULTIPLE DIFFERENT tools. "
-        "Always respond to the user in the language they spoke. "
-        "Examples: 'research X and save to file', 'find files and organize them', "
-        "'fill a form on a website', 'write and test code'. "
-        "DO NOT use for simple computer commands like volume, refresh, close, scroll, "
-        "minimize, screenshot, restart, shutdown — use computer_settings for those. "
-        "DO NOT use if the task can be done with a single tool call."
-    ),
-    "parameters": {
-        "type": "OBJECT",
-        "properties": {
-            "goal": {
-                "type": "STRING",
-                "description": "Complete description of what needs to be accomplished"
-            },
-            "priority": {
-                "type": "STRING",
-                "description": "low | normal | high (default: normal)"
-            }
-        },
-        "required": ["goal"]
-    }
-},
-    {
-    "name": "computer_control",
-    "description": (
-        "Direct computer control: type text, click buttons, use keyboard shortcuts, "
-        "scroll, move mouse, take screenshots, fill forms, find elements on screen. "
-        "Use when the user wants to interact with any app on the computer directly. "
-        "Can generate random data for forms or use user's real info from memory."
-    ),
-    "parameters": {
-        "type": "OBJECT",
-        "properties": {
-            "action":      {"type": "STRING", "description": "type | smart_type | click | double_click | right_click | hotkey | press | scroll | move | copy | paste | screenshot | wait | clear_field | focus_window | screen_find | screen_click | random_data | user_data"},
-            "text":        {"type": "STRING", "description": "Text to type or paste"},
-            "x":           {"type": "INTEGER", "description": "X coordinate for click/move"},
-            "y":           {"type": "INTEGER", "description": "Y coordinate for click/move"},
-            "keys":        {"type": "STRING", "description": "Key combination e.g. 'ctrl+c'"},
-            "key":         {"type": "STRING", "description": "Single key to press e.g. 'enter'"},
-            "direction":   {"type": "STRING", "description": "Scroll direction: up | down | left | right"},
-            "amount":      {"type": "INTEGER", "description": "Scroll amount (default: 3)"},
-            "seconds":     {"type": "NUMBER", "description": "Seconds to wait"},
-            "title":       {"type": "STRING", "description": "Window title for focus_window"},
-            "description": {"type": "STRING", "description": "Element description for screen_find/screen_click"},
-            "type":        {"type": "STRING", "description": "Data type for random_data: name|email|username|password|phone|birthday|address"},
-            "field":       {"type": "STRING", "description": "Field for user_data: name|email|city"},
-            "clear_first": {"type": "BOOLEAN", "description": "Clear field before typing (default: true)"},
-            "path":        {"type": "STRING", "description": "Save path for screenshot"},
-        },
-        "required": ["action"]
-    }
-},
-
-{
-    "name": "flight_finder",
-    "description": (
-        "Searches for flights on Google Flights and speaks the best options. "
-        "Use when user asks about flights, plane tickets, uçuş, bilet, etc."
-    ),
-    "parameters": {
-        "type": "OBJECT",
-        "properties": {
-            "origin":       {"type": "STRING",  "description": "Departure city or airport code"},
-            "destination":  {"type": "STRING",  "description": "Arrival city or airport code"},
-            "date":         {"type": "STRING",  "description": "Departure date (any format)"},
-            "return_date":  {"type": "STRING",  "description": "Return date for round trips"},
-            "passengers":   {"type": "INTEGER", "description": "Number of passengers (default: 1)"},
-            "cabin":        {"type": "STRING",  "description": "economy | premium | business | first"},
-            "save":         {"type": "BOOLEAN", "description": "Save results to Notepad"},
-        },
-        "required": ["origin", "destination", "date"]
-    }
-},
-{
-    "name": "smart_trigger",
-    "description": (
-        "Creates or removes autonomous background triggers for Kree. "
-        "Use when user says 'remind me every 10 mins', 'tell me if CPU goes over 90%', "
-        "'watch my downloads folder', etc. "
-    ),
-    "parameters": {
-        "type": "OBJECT",
-        "properties": {
-            "action":         {"type": "STRING", "description": "create | remove"},
-            "name":           {"type": "STRING", "description": "A short distinct name for the trigger"},
-            "trigger_type":   {"type": "STRING", "description": "system | time | file"},
-            "metric":         {"type": "STRING", "description": "cpu | ram | time (e.g. 14:30) | dir_path"},
-            "operator":       {"type": "STRING", "description": ">= | <= | =="},
-            "value":          {"type": "STRING", "description": "Threshold value, e.g. '90' or '14:30'"},
-            "action_to_take": {"type": "STRING", "description": "Natural language command Kree will execute when fired"},
-            "silent":         {"type": "BOOLEAN", "description": "If true, Kree will execute silently unless it involves speaking (default: true)"},
-            "id_to_remove":   {"type": "STRING", "description": "ID of trigger to remove (if action=remove)"}
-        },
-        "required": ["action"]
-    }
-},
-{
-    "name": "file_controller",
-    "description": (
-        "Advanced file & folder management automation. "
-        "Use for bulk rename, organizing downloads, finding duplicates, etc."
-    ),
-    "parameters": {
-        "type": "OBJECT",
-        "properties": {
-            "action":      {"type": "STRING", "description": "organize | rename_bulk | find_duplicates | move | delete"},
-            "path":        {"type": "STRING", "description": "Target directory path (default: Downloads or Desktop if not specified)"},
-            "pattern":     {"type": "STRING", "description": "Regex or glob pattern for renaming/finding"},
-            "destination": {"type": "STRING", "description": "Destination directory"}
-        },
-        "required": ["action"]
-    }
-},
-{
-    "name": "browser_control",
-    "description": (
-        "Automates browser actions in the background. "
-        "Use for filling forms, logging into sites, web scraping, or downloading files via URL."
-    ),
-    "parameters": {
-        "type": "OBJECT",
-        "properties": {
-            "action": {"type": "STRING", "description": "search | form_fill | scrape | navigate"},
-            "url":    {"type": "STRING", "description": "Target website URL"},
-            "query":  {"type": "STRING", "description": "Search query or specific data to find/scrape"},
-            "form_data": {"type": "STRING", "description": "JSON string of data to fill into forms"}
-        },
-        "required": ["action"]
-    }
-},
-{
-    "name": "productivity_manager",
-    "description": (
-        "Manages emails and calendar events. "
-        "Use when user wants to read inbox, draft emails, send emails, or schedule meetings. "
-        "ALWAYS use action='draft_email' first if asked to compose or send an email, to allow user confirmation."
-    ),
-    "parameters": {
-        "type": "OBJECT",
-        "properties": {
-            "action": {"type": "STRING", "description": "read_inbox | draft_email | send_email | schedule_meeting"},
-            "to": {"type": "STRING", "description": "Recipient name/address"},
-            "subject": {"type": "STRING", "description": "Email subject"},
-            "body": {"type": "STRING", "description": "Email content"},
-            "title": {"type": "STRING", "description": "Meeting title"},
-            "time": {"type": "STRING", "description": "Meeting time or date"}
-        },
-        "required": ["action"]
-    }
-}
-]
-
+from core.tool_registry import TOOL_DECLARATIONS
 class JarvisLive:
 
     # ── Sensitive tools that require PIN re-verification after session timeout ──
@@ -3367,7 +2925,7 @@ class JarvisLive:
 
 def main():
     import sys
-    is_background = "--background" in sys.argv
+    is_background = "--foreground" not in sys.argv
     ui = JarvisUI("face.png", startup_hidden=is_background)
 
     def runner():

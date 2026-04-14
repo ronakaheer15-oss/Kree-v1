@@ -3,7 +3,7 @@
   "vad_threshold_rising": 220,
   "vad_threshold_falling": 160,
   "partial_confidence_min": 0.7,
-  "partial_flush_seconds": 2.0,
+  "partial_flush_seconds": 0.4,
   "tool_gate_window_seconds": 4.0,
   "mic_enabled": false,
   "auto_face_id": true,

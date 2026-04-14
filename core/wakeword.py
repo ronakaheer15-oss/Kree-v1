@@ -182,9 +182,9 @@ class WakeWordDetector:
                 inference_framework="onnx"
             )
         else:
-            print("[KREE WAKE] Using built-in 'hey_jarvis' model (default until custom trained)")
+            print("[KREE WAKE] Custom ONNX not found. Using built-in 'hey_mycroft' fallback model.")
             self.model = Model(
-                wakeword_models=["hey_jarvis"],
+                wakeword_models=["hey_mycroft"],
                 inference_framework="onnx"
             )
 
@@ -247,15 +247,7 @@ class WakeWordDetector:
         while self.is_running:
             try:
                 # ── CPU Yield Optimization ──
-                time.sleep(0.01)
-                
-                # ── Lock Screen Security ──
-                try:
-                    import ctypes
-                    user32 = ctypes.windll.User32
-                    if user32.GetForegroundWindow() == 0:
-                        continue
-                except: pass
+                time.sleep(0.005)
 
                 audio = stream.read(FRAMES_PER_BUFFER, exception_on_overflow=False)
                 audio_np = np.frombuffer(audio, dtype=np.int16)
@@ -265,10 +257,7 @@ class WakeWordDetector:
                 if len(verification_buffer) > VERIFICATION_FRAMES:
                     verification_buffer.pop(0)
                     
-                # ── CPU Optimization (Skip inference every other frame) ──
                 frame_count += 1
-                if frame_count % 2 != 0:
-                    continue
 
                 # ── Auto Gain Control (Far-Field Boost) ──
                 # If the user is across the room, the volume is extremely low.
