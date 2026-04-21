@@ -377,7 +377,7 @@ class AgentExecutor:
             plan = replan(goal, completed_steps, failed_step, failed_error)
 
     def _summarize(self, goal: str, completed_steps: list, speak: Callable | None) -> str:
-        fallback = f"All done, sir. Completed {len(completed_steps)} steps for: {goal[:60]}."
+        fallback = f"I completed {len(completed_steps)} step(s) for: {goal[:60]}."
         try:
             import google.generativeai as genai
             genai.configure(api_key=_get_api_key())
@@ -387,10 +387,12 @@ class AgentExecutor:
                 f'User goal: "{goal}"\n'
                 f"Completed steps:\n{steps_str}\n\n"
                 "Write a single natural sentence summarizing what was accomplished. "
-                "Address the user as 'sir'. Be direct and positive."
+                "Be direct, specific, and avoid canned phrases. Use 'sir' only if it fits naturally."
             )
             response = model.generate_content(prompt)
-            summary  = response.text.strip()
+            summary  = (response.text or "").strip()
+            if not summary:
+                raise ValueError("Empty summary from Gemini")
             if speak: speak(summary)
             return summary
         except Exception:

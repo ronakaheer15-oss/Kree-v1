@@ -128,7 +128,13 @@ class KreeIntelligenceEngine:
             data = res.json()
             return data.get("message", {}).get("content", "")
         except requests.exceptions.ConnectionError:
-            return f"[ERROR] Local Mode Active ({self.mode}), but Ollama is not running. Please install Ollama and run '{model_name}'."
+            err_msg = f"[OFFLINE MODE] Ollama is not running on {self.ollama_host}. Please start Ollama and ensure the '{model_name}' model is installed."
+            logger.error(err_msg)
+            return err_msg
+        except requests.exceptions.Timeout:
+            err_msg = f"[OFFLINE MODE] Local model '{model_name}' timed out. Your PC might be too slow to run this model in real-time."
+            logger.error(err_msg)
+            return err_msg
         except Exception as e:
             logger.error(f"[Gateway] Local generation failed: {e}")
             return f"Error interacting with Local Intelligence: {str(e)}"

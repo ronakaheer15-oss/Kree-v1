@@ -22,13 +22,34 @@ import numpy as np
 from pathlib import Path
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-BASE_DIR = Path(__file__).resolve().parent.parent
+import sys as _sys
+
+def _get_base_dir():
+    """Return the project root — works in both dev and frozen mode."""
+    if getattr(_sys, "frozen", False) and hasattr(_sys, "_MEIPASS"):
+        return Path(_sys._MEIPASS)
+    return Path(__file__).resolve().parent.parent
+
+BASE_DIR = _get_base_dir()
 VOICEPRINT_DIR = BASE_DIR / "assets" / "voiceprint"
 VOICEPRINT_FILE = VOICEPRINT_DIR / "owner.npy"
 
 # ── Custom Model Path ────────────────────────────────────────────────────────
-# TODO: Train custom "Hey Kree" with openwakeword and place .onnx here:
 CUSTOM_ONNX_PATH = BASE_DIR / "assets" / "models" / "hey_kree.onnx"
+
+# In frozen mode, openwakeword resources are bundled at _MEIPASS/openwakeword/resources
+# In dev mode, they're in the .venv site-packages
+if getattr(_sys, "frozen", False):
+    VENV_MODEL_DIR = BASE_DIR / "openwakeword" / "resources" / "models"
+else:
+    VENV_MODEL_DIR = BASE_DIR.parent / ".venv" / "Lib" / "site-packages" / "openwakeword" / "resources" / "models"
+
+DEFAULT_WAKEWORD_MODELS = (
+    "hey_jarvis",
+    "hey_jarvis_v0.1",
+    "hey_mycroft",
+    "hey_mycroft_v0.1",
+)
 
 # ── Wake Trigger Types ────────────────────────────────────────────────────────
 WAKE_FULL = "full"        # full wake: UI + chime + greeting
@@ -57,10 +78,25 @@ class VoiceFingerprint:
         self._encoder = None
         self._owner_embed = None
         self._available = False
+        self._encoder_load_attempted = False
+
+        # Load existing voiceprint
+        if VOICEPRINT_FILE.exists():
+            try:
+                self._owner_embed = np.load(str(VOICEPRINT_FILE))
+                print("[KREE VOICE] Owner voiceprint loaded.")
+            except Exception as e:
+                print(f"[KREE VOICE] Voiceprint load error: {e}")
+
+    def _ensure_encoder(self) -> bool:
+        if self._encoder is not None:
+            return True
+        if self._encoder_load_attempted:
+            return False
+
+        self._encoder_load_attempted = True
 
         try:
-            # Stub webrtcvad before importing resemblyzer — it's only used
-            # for internal VAD preprocessing we don't need (we have raw PCM)
             import sys
             if "webrtcvad" not in sys.modules:
                 import types
@@ -73,16 +109,10 @@ class VoiceFingerprint:
             self._available = True
             print("[KREE VOICE] Resemblyzer encoder loaded.")
         except Exception as e:
+            self._available = False
             print(f"[KREE VOICE] Resemblyzer unavailable (voice lock disabled): {e}")
-            return
 
-        # Load existing voiceprint
-        if VOICEPRINT_FILE.exists():
-            try:
-                self._owner_embed = np.load(str(VOICEPRINT_FILE))
-                print("[KREE VOICE] Owner voiceprint loaded.")
-            except Exception as e:
-                print(f"[KREE VOICE] Voiceprint load error: {e}")
+        return self._encoder is not None
 
     @property
     def is_enrolled(self) -> bool:
@@ -94,7 +124,7 @@ class VoiceFingerprint:
 
     def enroll_owner(self):
         """Record owner's voice for enrollment (blocking, called once)."""
-        if not self._available:
+        if not self._ensure_encoder():
             return False
 
         import pyaudio
@@ -132,7 +162,7 @@ class VoiceFingerprint:
 
     def verify(self, audio_int16: np.ndarray) -> bool:
         """Verify if the speaker matches the owner. Returns True if match or not enrolled."""
-        if not self._available or not self.is_enrolled:
+        if not self._ensure_encoder() or not self.is_enrolled:
             return True  # Not enrolled → allow all (graceful degradation)
 
         try:
@@ -171,27 +201,64 @@ class WakeWordDetector:
         self._ambient_rms = 0
         self._last_ambient_check = 0.0
         self._voice_fp = VoiceFingerprint()
-
-        # ── OpenWakeWord Init ─────────────────────────────────────────────
-        from openwakeword.model import Model
-
-        if CUSTOM_ONNX_PATH.exists():
-            print(f"[KREE WAKE] Using custom model: {CUSTOM_ONNX_PATH.name}")
-            self.model = Model(
-                wakeword_models=[str(CUSTOM_ONNX_PATH)],
-                inference_framework="onnx"
-            )
-        else:
-            print("[KREE WAKE] Custom ONNX not found. Using built-in 'hey_mycroft' fallback model.")
-            self.model = Model(
-                wakeword_models=["hey_mycroft"],
-                inference_framework="onnx"
-            )
-
-        print("[KREE WAKE] OpenWakeWord model loaded (ONNX)")
+        self.model = None
+        self._model_name = None
+        self._model_load_attempted = False
 
         if self._voice_fp.is_available and not self._voice_fp.is_enrolled:
             print("[KREE VOICE] No voiceprint found. Say 'enroll my voice' to register.")
+
+    def _candidate_models(self):
+        candidates = []
+
+        if CUSTOM_ONNX_PATH.exists():
+            candidates.append(str(CUSTOM_ONNX_PATH))
+
+        for model_name in DEFAULT_WAKEWORD_MODELS:
+            venv_model_path = VENV_MODEL_DIR / f"{model_name}.onnx"
+            if venv_model_path.exists():
+                candidates.append(str(venv_model_path))
+            candidates.append(model_name)
+
+        unique_candidates = []
+        seen = set()
+        for candidate in candidates:
+            if candidate not in seen:
+                seen.add(candidate)
+                unique_candidates.append(candidate)
+        return unique_candidates
+
+    def _ensure_model(self) -> bool:
+        if self.model is not None:
+            return True
+        if self._model_load_attempted:
+            return False
+
+        self._model_load_attempted = True
+
+        from openwakeword.model import Model
+
+        last_error = None
+        for model_spec in self._candidate_models():
+            try:
+                if os.path.exists(model_spec):
+                    print(f"[KREE WAKE] Loading wake model file: {Path(model_spec).name}")
+                else:
+                    print(f"[KREE WAKE] Loading built-in wake model: {model_spec}")
+
+                self.model = Model(
+                    wakeword_models=[model_spec],
+                    inference_framework="onnx"
+                )
+                self._model_name = next(iter(self.model.models.keys()), None)
+                print(f"[KREE WAKE] OpenWakeWord model loaded (ONNX): {self._model_name}")
+                return True
+            except Exception as e:
+                last_error = e
+                self.model = None
+
+        print(f"[KREE WAKE] WakeWord model load failed: {last_error}")
+        return False
 
     def start(self):
         if self.is_running:
@@ -221,6 +288,9 @@ class WakeWordDetector:
 
     def _run_loop(self):
         import pyaudio
+
+        if not self._ensure_model():
+            return
 
         pa = pyaudio.PyAudio()
         try:

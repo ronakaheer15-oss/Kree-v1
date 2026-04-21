@@ -10,12 +10,20 @@ import platform as _platform
 import logging as _logging
 from pathlib import Path as _Path
 
+# ── DEV-ONLY: .venv path injection (NEVER in frozen EXE) ─────────────────────
+if not getattr(_sys, "frozen", False):
+    _VENV_SITE_PACKAGES = _Path(__file__).resolve().parent.parent / ".venv" / "Lib" / "site-packages"
+    if _VENV_SITE_PACKAGES.exists():
+        _venv_site_packages_str = str(_VENV_SITE_PACKAGES)
+        if _venv_site_packages_str not in _sys.path:
+            _sys.path.insert(0, _venv_site_packages_str)
+
 if hasattr(_sys.stdout, 'buffer'):
     _sys.stdout = _io.TextIOWrapper(_sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
 if hasattr(_sys.stderr, 'buffer'):
     _sys.stderr = _io.TextIOWrapper(_sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
 
-# ── EMERGENGY LOGGING ────────────────────────────────────────────────────────
+# ── PRODUCTION LOGGING ───────────────────────────────────────────────────────
 try:
     if getattr(_sys, "frozen", False):
         log_dir = _Path(_os.environ.get("LOCALAPPDATA", "C:\\Temp")) / "Kree AI"
@@ -32,19 +40,38 @@ try:
         filemode='a'
     )
     _logging.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    _logging.info("Kree AI Production Runtime Starting (DEBUG MODE)...")
+    _logging.info("Kree AI Production Runtime Starting...")
     _logging.info(f"Platform: {_platform.system()} {_platform.release()}")
+    _logging.info(f"Frozen: {getattr(_sys, 'frozen', False)}")
 except Exception as e:
     _sys.stderr.write(f"CRITICAL: Logging init failed: {e}\n")
 
+# ── GLOBAL CRASH HANDLER (captures fatal errors in frozen EXE) ───────────────
+def _kree_crash_handler(exc_type, exc_value, exc_tb):
+    import traceback as _tb
+    crash_text = "".join(_tb.format_exception(exc_type, exc_value, exc_tb))
+    _logging.critical(f"UNHANDLED EXCEPTION:\n{crash_text}")
+    try:
+        crash_file = log_dir / "crash.log"
+        with open(crash_file, "a", encoding="utf-8") as f:
+            import datetime
+            f.write(f"\n{'='*60}\n{datetime.datetime.now()}\n{crash_text}\n")
+    except Exception:
+        pass
+    _sys.__excepthook__(exc_type, exc_value, exc_tb)
+
+_sys.excepthook = _kree_crash_handler
+
 import asyncio
 import collections
+import random
 import threading
 import json
 import difflib
 import re
 import sys
 import os
+import logging
 import traceback
 import functools
 import base64
@@ -61,6 +88,11 @@ except ImportError:
     pyaudio = None  # type: ignore[assignment]
     cv2 = None      # type: ignore[assignment]
     print("[JARVIS] ⚠️ PyAudio or CV2 not installed.")
+
+try:
+    import speech_recognition as sr  # type: ignore[import]
+except ImportError:
+    sr = None  # type: ignore[assignment]
 
 import time
 import wave
@@ -206,9 +238,10 @@ def _load_system_prompt() -> str:
             # Identity Injection
             ident_block = ""
             if profile.get("name"):
-                ident_block += f"\nThe user's name is {profile['name']}. Address them as sir.\n"
+                ident_block += f"\nThe user's name is {profile['name']}. Address them by name when natural; use sir sparingly.\n"
             if profile.get("default_email"):
                 ident_block += f"Default email: {profile['default_email']}\n"
+            ident_block += "Do not repeat canned acknowledgements or stock phrases. Vary phrasing and answer with fresh, task-focused language.\n"
                 
             return f"{base_text}\n\n{ident_block}\n\n=== RECENT CONTEXT ===\n{history_summary}\n"
         except Exception as e:
@@ -298,6 +331,9 @@ def _local_welcome_voice(kree_instance) -> None:
         pass
 
 
+_GREETING_MEMORY: dict[str, list[str]] = {}
+
+
 def _build_contextual_greeting(name: str = "sir") -> str:
     """
     Highly advanced context-aware greeting engine.
@@ -305,7 +341,13 @@ def _build_contextual_greeting(name: str = "sir") -> str:
     and time of day to formulate a highly targeted and natural greeting.
     """
     import datetime
-    import random
+
+    def _pick_unique(bucket: str, options: list[str]) -> str:
+        recent_choices = _GREETING_MEMORY.get(bucket, [])
+        usable = [item for item in options if item not in recent_choices] or options
+        choice = random.choice(usable)
+        _GREETING_MEMORY[bucket] = (recent_choices + [choice])[-3:]
+        return choice
     
     now = datetime.datetime.now()
     hr = now.hour
@@ -464,7 +506,7 @@ def _build_contextual_greeting(name: str = "sir") -> str:
 
     # Priority 3: Time & Day combinations
     if day == 0 and hr < 12: # Monday Morning
-        return random.choice([
+        return _pick_unique("mon_morning", [
             f"Monday morning, {name}. Ready to conquer the week?",
             f"Welcome to a new week, {name}.",
             f"Monday morning, let's get started.",
@@ -472,7 +514,7 @@ def _build_contextual_greeting(name: str = "sir") -> str:
             f"Rise and grind, {name}. It's Monday."
         ])
     elif day == 4 and hr > 16: # Friday Evening
-        return random.choice([
+        return _pick_unique("fri_evening", [
             f"It's Friday evening, {name}. Almost time to relax.",
             f"Wrapping up the week, {name}?",
             f"Friday evening, {name}. What's left?",
@@ -480,7 +522,7 @@ def _build_contextual_greeting(name: str = "sir") -> str:
             f"Weekend's almost here, {name}. Need anything before we wrap?"
         ])
     elif day in (5, 6): # Weekend
-        return random.choice([
+        return _pick_unique("weekend", [
             f"Weekend vibes, {name}. What are we doing?",
             f"It's the weekend, {name}. Working or chilling?",
             f"No rest for the ambitious, {name}?",
@@ -490,9 +532,9 @@ def _build_contextual_greeting(name: str = "sir") -> str:
 
     # Priority 4: Standard Time-based greetings
     if hr < 6:
-        return random.choice([
+        return _pick_unique("night", [
             f"Burning the midnight oil, {name}?",
-            f"Still up, {name}? Dedicated.",
+            f"Night shift mode, {name}. What are we tackling?",
             f"It's quite late, {name}. What do you need?",
             f"Late night grind, {name}. I'm here for it.",
             f"The world is sleeping, but not us, {name}.",
@@ -501,7 +543,7 @@ def _build_contextual_greeting(name: str = "sir") -> str:
             f"It's past midnight, {name}. How can I help?"
         ])
     elif hr < 12:
-        return random.choice([
+        return _pick_unique("morning", [
             f"Good morning, {name}.",
             f"Morning, {name}. Ready to start?",
             f"Good morning. What's the plan for today?",
@@ -512,7 +554,7 @@ def _build_contextual_greeting(name: str = "sir") -> str:
             f"Good morning, {name}. I'm all ears."
         ])
     elif hr < 14:
-        return random.choice([
+        return _pick_unique("midday", [
             f"Afternoon, {name}. What's next?",
             f"Lunchtime productivity, {name}?",
             f"Good afternoon, {name}. How can I help?",
@@ -520,7 +562,7 @@ def _build_contextual_greeting(name: str = "sir") -> str:
             f"Afternoon, {name}. Let's keep the momentum going."
         ])
     elif hr < 18:
-        return random.choice([
+        return _pick_unique("afternoon", [
             f"Kree online, {name}.",
             f"Good afternoon, {name}.",
             f"Yes, {name}?",
@@ -528,10 +570,9 @@ def _build_contextual_greeting(name: str = "sir") -> str:
             f"Afternoon push, {name}. What do you need?",
             f"Still going strong, {name}?",
             f"At your service, {name}.",
-            f"Ready when you are, {name}."
         ])
     elif hr < 22:
-        return random.choice([
+        return _pick_unique("evening", [
             f"Good evening, {name}.",
             f"Evening, {name}. What's next?",
             f"Yes, {name}?",
@@ -542,7 +583,7 @@ def _build_contextual_greeting(name: str = "sir") -> str:
             f"The evening is young, {name}. What shall we do?"
         ])
     else:
-        return random.choice([
+        return _pick_unique("late_evening", [
             f"Still going, {name}? Impressive.",
             f"Late night session, {name}?",
             f"Good evening, {name}.",
@@ -577,9 +618,21 @@ class ContextTTSEngine:
         import os
         import subprocess
         from memory.config_manager import load_audio_settings
+        try:
+            from core.user_profile import get_user_profile
+        except Exception:
+            get_user_profile = None
         while self.running:
             try:
-                current = _build_contextual_greeting("sir")
+                profile_name = "friend"
+                if get_user_profile is not None:
+                    try:
+                        profile = get_user_profile() or {}
+                        profile_name = (profile.get("name") or "friend").strip() or "friend"
+                    except Exception:
+                        profile_name = "friend"
+
+                current = _build_contextual_greeting(profile_name)
                 settings = load_audio_settings()
                 gemini_voice = settings.get("kree_voice", "Kore")
                 edge_voice = {
@@ -1098,6 +1151,7 @@ class JarvisLive:
         except: pass
         if hasattr(self, 'wake_event'):
             self.wake_event.clear()
+        self._welcomed = False
         
         # Abort the async connection safely if running
         if self._loop and self.audio_in_queue:
@@ -1476,25 +1530,33 @@ class JarvisLive:
             
     def speak(self, text: str):
         """Thread-safe chunked speak — prevents Gemini Live TTS glitches on long text."""
+        import re
+
         loop = self._loop
         session = self.session
         if not loop or not session:
             _local_speech_voice(text)
             return
+
+        # Long replies are smoother and more stable when rendered through the local
+        # Edge TTS path instead of being broken into multiple Gemini Live chunks.
+        if len(text) > 360 or len(re.split(r'(?<=[.!?])\s+', text)) > 4:
+            _local_speech_voice(text)
+            return
         
-        # Split text logic (max 200 chars, try to split at sentences)
-        import re
+        # Split text logic (keep chunks larger to avoid voice restarts).
         chunks = []
         current = ""
         sentences = re.split(r'(?<=[.!?])\s+', text)
         for s in sentences:
-            if len(current) + len(s) <= 200:
+            if len(current) + len(s) <= 320:
                 current += s + " "
             else:
                 if current.strip(): chunks.append(current.strip())
-                if len(s) > 200:
-                    for i in range(0, len(s), 195):
-                        chunks.append(s[i:i+195])
+                if len(s) > 320:
+                    import textwrap
+                    for wrap in textwrap.wrap(s, 300, break_long_words=False):
+                        chunks.append(wrap)
                     current = ""
                 else:
                     current = s + " "
@@ -1589,7 +1651,7 @@ class JarvisLive:
             output_audio_transcription={},
             input_audio_transcription=types.AudioTranscriptionConfig(),
             system_instruction=sys_prompt,
-            tools=[{"function_declarations": TOOL_DECLARATIONS}],
+            tools=[{"function_declarations": TOOL_DECLARATIONS}, {"google_search": {}}],
             session_resumption=types.SessionResumptionConfig(),
             # Server-side VAD enabled — Gemini handles turn detection for instant response
             speech_config=types.SpeechConfig(
@@ -1967,7 +2029,12 @@ class JarvisLive:
                 r = await loop.run_in_executor(
                     None, functools.partial(web_search_action, parameters=args, player=self.ui)  # type: ignore[arg-type]
                 )
-                result = r or "Search completed."
+                if isinstance(r, str) and r.strip():
+                    result = r
+                elif r is None:
+                    result = "Web search failed to return a result."
+                else:
+                    result = "Web search returned no usable results."
             elif name == "computer_control":
                 r = await loop.run_in_executor(
                     None, functools.partial(computer_control, parameters=args, player=self.ui)  # type: ignore[arg-type]
@@ -2245,6 +2312,7 @@ class JarvisLive:
                 print(f"[JARVIS] 👂 Waiting for turn #{_turn_n}...")
                 turn = self.session.receive()
                 _msg_n = 0
+                turn_tools = []
                 async for response in turn:
                     _msg_n += 1
 
@@ -2325,12 +2393,7 @@ class JarvisLive:
                                 
                                 try:
                                     import memory.history_manager as hist
-                                    # Parse out recently executed tools to add them visually into the memory text limit
-                                    executed_tools = []
-                                    if response.tool_call:
-                                        for fc in response.tool_call.function_calls:
-                                            executed_tools.append(fc.name)
-                                    hist.save_turn(full_in, full_out, tools=executed_tools)
+                                    hist.save_turn(full_in, full_out, tools=turn_tools)
                                 except Exception as e:
                                     print(f"[JARVIS] ⚠️ History log error: {e}")
 
@@ -2338,6 +2401,8 @@ class JarvisLive:
                         # Print all tools being called
                         for fc in response.tool_call.function_calls:
                             print(f"[JARVIS] 📞 Tool call: {fc.name}")
+                            turn_tools.append(fc.name)
+                            self.ui.write_log(f"Kree: [Tool Executing: {fc.name}]")
                         
                         # Execute all tools concurrently (Parallel Execution)
                         fn_responses = list(await asyncio.gather(
@@ -2454,6 +2519,13 @@ class JarvisLive:
     async def _proactive_check_loop(self):
         """Silently monitors user activity. Triggers Kree if dormant."""
         print("[JARVIS] ⏱️ Proactive Monitor started (60s timer)")
+
+        check_in_phrases = [
+            "Need anything else?",
+            "I’m here if you need me.",
+            "Want me to keep going?",
+            "Anything else on your mind?",
+        ]
         
         while True:
             # Random jitter to make it feel organic, but base is 60s for dev
@@ -2467,7 +2539,11 @@ class JarvisLive:
             
             # Dev mode: 60s. Prod: 1800s. Timeouts.
             AUTO_SLEEP_TIMEOUT = 300  # 5 minutes
-            if dormant_time > getattr(self._audio_settings, 'proactive_heartbeat', 60):
+            proactive_timeout = 60
+            if isinstance(self._audio_settings, dict):
+                proactive_timeout = int(self._audio_settings.get("proactive_heartbeat", proactive_timeout) or proactive_timeout)
+
+            if proactive_timeout > 0 and dormant_time > proactive_timeout:
                 if dormant_time > AUTO_SLEEP_TIMEOUT and self.wake_event.is_set():
                     print(f"[JARVIS] ⏱️ Inactive for 5 mins. Auto-sleeping.")
                     try:
@@ -2479,8 +2555,9 @@ class JarvisLive:
                 elif not getattr(self, "bot_is_speaking", False) and getattr(self.ui, "_mic_active", True):
                     print(f"[JARVIS] ⏱️ Dormant for {int(dormant_time)}s. Firing proactive check-in!")
                     try:
-                        await self.session.send(
-                            input="[SYSTEM OVERRIDE] The user has been quiet for a while. Proactively check in with them naturally and ask how the session is going. Be extremely brief."
+                        await self.session.send_client_content(
+                            turns={"parts": [{"text": random.choice(check_in_phrases)}]},
+                            turn_complete=True,
                         )
                         # Reset timer so it doesn't spam
                         self._last_user_turn = time.time()
@@ -2702,10 +2779,12 @@ class JarvisLive:
                     _local_welcome_voice(self)
                     
                     try:
-                        import core.onboarding as onboard
-                        if onboard.is_first_launch():
-                            # This will be handled inside the connect taskgroup later
-                            self._needs_onboarding = True
+                        if not getattr(self, "_checked_onboarding", False):
+                            self._checked_onboarding = True
+                            import core.onboarding as onboard
+                            if onboard.is_first_launch():
+                                # This will be handled inside the connect taskgroup later
+                                self._needs_onboarding = True
                     except Exception:
                         pass
             
@@ -2853,7 +2932,10 @@ class JarvisLive:
         """
         self._loop = asyncio.get_event_loop()
         from core.llm_gateway import KreeIntelligenceEngine
-        import speech_recognition as sr
+
+        if sr is None:
+            print("[JARVIS] SpeechRecognition is not installed. Local offline mode is unavailable.")
+            return
         
         engine = KreeIntelligenceEngine()
         recognizer = sr.Recognizer()
@@ -2892,12 +2974,16 @@ class JarvisLive:
                 except: pass
 
                 try:
-                    # Fallback to free Google STT if strictly local STT (whisper) isn't loaded yet.
-                    text = await asyncio.to_thread(recognizer.recognize_google, audio)
-                    text = self._sanitize_multilingual_transcript(text)
+                    # True Offline STT using Vosk
+                    import json
+                    text_json = await asyncio.to_thread(recognizer.recognize_vosk, audio)
+                    # Vosk returns a JSON string like {"text": "something"}
+                    parsed_text = json.loads(text_json).get("text", "")
+                    
+                    text = self._sanitize_multilingual_transcript(parsed_text)
                     if not text: continue
                     
-                    print(f"[JARVIS] 🗣️ Heard (Local STT): {text}")
+                    print(f"[JARVIS] 🗣️ Heard (Offline STT): {text}")
                     self.ui.write_log(f"You: {text}")
 
                     if text.lower().startswith("open "):
@@ -2906,6 +2992,13 @@ class JarvisLive:
                     
                     # LLM Gateway phase (Think)
                     response_text = await asyncio.to_thread(engine.generate_content, text)
+                    if "[OFFLINE MODE]" in response_text:
+                        print(response_text)
+                        self.ui.write_log(f"⚠️ {response_text}")
+                        self.speak("Sir, I cannot reach the local Ollama node. Please ensure it is running.")
+                        await asyncio.sleep(5)
+                        continue
+
                     print(f"[JARVIS] 🧠 Local Gemma Response: {response_text[:100]}...")
                     self.ui.write_log(f"Kree: {response_text}")
                     
@@ -2914,8 +3007,14 @@ class JarvisLive:
                     
                 except sr.UnknownValueError:
                     pass # Couldn't understand audio
-                except sr.RequestError as e:
-                    print(f"[JARVIS] STT limit/network error: {e}")
+                except Exception as e:
+                    if "model" in str(e).lower() and "vosk" in str(e).lower():
+                        print("[JARVIS] ⚠️ Vosk STT Model not found. Download 'vosk-model-small-en-us' and place it in the root folder as 'model'.")
+                        self.ui.write_log("Vosk model missing. Please download it for offline voice recognition.")
+                        await asyncio.sleep(10)
+                    else:
+                        print(f"[JARVIS] STT error: {e}")
+                        await asyncio.sleep(1)
                     
             except sr.WaitTimeoutError:
                 pass # Timeout silently to re-check the loop

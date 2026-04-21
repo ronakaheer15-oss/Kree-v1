@@ -1,5 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Kree AI — PyInstaller Build Spec (Production v0.1.0)
+# Kree AI — PyInstaller Build Spec (Production v0.2.0 — Optimized)
+#
+# Target size: ~180–250 MB (down from ~1 GB)
+# Key changes:
+#   - Exclude PySide6/Qt (628 MB) — pywebview uses EdgeChromium on Windows
+#   - Exclude torch (448 MB) — only used in optional export, not runtime
+#   - Exclude llvmlite/numba (128 MB) — not imported anywhere
+#   - Exclude vosk (52 MB) — not directly imported
+#   - Fix actions.desktop_control → actions.desktop
+#   - Bundle only .onnx models (not .tflite duplicates)
+#   - Strip node.exe, opencv FFmpeg, MFC DLLs
 
 import os
 from pathlib import Path
@@ -15,12 +25,14 @@ def _first_existing(*candidates: Path) -> Path:
     return candidates[0]
 
 
-# After reorganization, stitch dashboard lives in _Related_Projects
 STITCH_ROOT = _first_existing(
     ROOT / 'stitch_core_system_dashboard',
     ROOT.parent / 'stitch_core_system_dashboard',
     ROOT.parent / '_Related_Projects' / 'stitch_core_system_dashboard_KREE_DESKTOP',
 )
+
+# ── Only bundle .onnx models from openwakeword (skip .tflite duplicates) ─────
+OWW_RESOURCES = ROOT.parent / '.venv' / 'Lib' / 'site-packages' / 'openwakeword' / 'resources'
 
 a = Analysis(
     [str(ROOT / 'main.py')],
@@ -36,98 +48,168 @@ a = Analysis(
         (str(ROOT / 'assets'), 'assets'),
         (str(ROOT / 'README-INSTALL.txt'), '.'),
         (str(STITCH_ROOT), 'stitch_core_system_dashboard'),
-        (str(ROOT.parent / '.venv/Lib/site-packages/openwakeword/resources'), 'openwakeword/resources'),
+        # Bundle openwakeword resources (models + configs)
+        (str(OWW_RESOURCES), 'openwakeword/resources'),
     ],
     hiddenimports=[
-        # ── Google AI SDKs (lazy imported) ────────────────────────────────
+        # ── Kree Action Modules (lazy-loaded via LazyToolLoader) ──────────
+        'actions.flight_finder',
+        'actions.open_app',
+        'actions.downloader_updater',
+        'actions.turboquant_helper',
+        'actions.openapps_automation',
+        'actions.weather_report',
+        'actions.send_message',
+        'actions.reminder',
+        'actions.computer_settings',
+        'actions.screen_processor',
+        'actions.youtube_video',
+        'actions.cmd_control',
+        'actions.desktop',              # ← FIXED: was desktop_control
+        'actions.browser_control',
+        'actions.file_controller',
+        'actions.code_helper',
+        'actions.dev_agent',
+        'actions.web_search',
+        'actions.computer_control',
+        'actions.email_calendar',
+
+        # ── Core modules ─────────────────────────────────────────────────
+        'core.runtime',
+        'core.wakeword',
+        'core.telemetry',
+        'core.version',
+        'core.auth_manager',
+        'core.auth_ui',
+        'core.security_ui',
+        'core.update_service',
+        'core.api_setup_ui',
+        'core.tool_registry',
+
+        # ── Google AI SDKs ───────────────────────────────────────────────
         'google.genai',
         'google.genai.types',
+        'google.genai.tools',
         'google.generativeai',
         'google.generativeai.types',
         'google.api_core',
         'google.auth',
         'google.auth.transport.requests',
-        
-        # ── Added via User Spec ───────────────────────────────────────────
+
+        # ── Wake Word + Voice ────────────────────────────────────────────
         'openwakeword',
+        'openwakeword.model',
         'onnxruntime',
-        'edge_tts',
-        'pygame',
-        'winreg',
         'resemblyzer',
-        'pyaudio',
-        'psutil',
-        'pystray',
-        'ctypes',
-        'PIL',
+        'resemblyzer.voice_encoder',
 
         # ── Audio / TTS ──────────────────────────────────────────────────
+        'edge_tts',
+        'pygame',
+        'pyaudio',
         'pyttsx3',
         'pyttsx3.drivers',
         'pyttsx3.drivers.sapi5',
+        'speech_recognition',
 
-        # ── Windows COM / Audio Control ──────────────────────────────────
+        # ── Desktop UI ───────────────────────────────────────────────────
+        'webview',
+        'clr_loader',
+        'pythonnet',
+
+        # ── System Control ───────────────────────────────────────────────
+        'psutil',
+        'pystray',
+        'ctypes',
+        'winreg',
         'comtypes',
         'comtypes.stream',
         'comtypes.client',
         'pycaw',
         'pycaw.pycaw',
 
-        # ── Notifications & OS ──────────────────────────────────────────
+        # ── Notifications ────────────────────────────────────────────────
         'win10toast',
         'pyperclip',
 
-        # ── WebSocket (mobile bridge) ────────────────────────────────────
+        # ── Web / Network ────────────────────────────────────────────────
+        'requests',
         'websockets',
         'websockets.server',
         'websockets.legacy',
         'websockets.legacy.server',
-
-        # ── Web scraping ─────────────────────────────────────────────────
+        'duckduckgo_search',
         'bs4',
         'lxml',
         'lxml.etree',
-
-        # ── QR Code (PWA connect tab) ────────────────────────────────────
-        'qrcode',
-        'qrcode.image',
-        'qrcode.image.svg',
-
-        # ── pywebview internals ──────────────────────────────────────────
-        'webview',
-        'clr_loader',
-        'pythonnet',
-
-        # ── Misc runtime imports ─────────────────────────────────────────
-        'engineio',
         'certifi',
         'charset_normalizer',
         'urllib3',
+        'engineio',
+
+        # ── Image / QR ───────────────────────────────────────────────────
+        'PIL',
+        'qrcode',
+        'qrcode.image',
+        'qrcode.image.svg',
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        # ── Heavy ML / Science libs not used ─────────────────────────────
+        # ══════════════════════════════════════════════════════════════════
+        # SIZE KILLERS — These are the packages that bloat the EXE to ~1GB
+        # ══════════════════════════════════════════════════════════════════
+
+        # ── PySide6 / Qt (~628 MB) ───────────────────────────────────────
+        # pywebview uses EdgeChromium on Windows, NOT Qt.
+        # PyInstaller's hook-qtpy.py auto-detects PySide6 and bundles it.
+        'PySide6', 'PySide2', 'PyQt5', 'PyQt6',
+        'PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets',
+        'PySide6.QtNetwork', 'PySide6.QtWebEngine', 'PySide6.QtQml',
+        'PySide6.QtQuick', 'PySide6.QtSvg',
+        'shiboken6', 'shiboken2',
+        'qtpy',
+
+        # ── PyTorch (~448 MB) ────────────────────────────────────────────
+        # Only used in optional turboquant export + onnx_runner export.
+        # resemblyzer CAN use torch but works fine with numpy-only path.
         'torch', 'torchvision', 'torchaudio',
+        'torch.cuda', 'torch.nn', 'torch.utils',
+
+        # ── llvmlite + numba (~128 MB) ───────────────────────────────────
+        # Transitive dep of scipy/sklearn. NOT imported by Kree code.
+        'llvmlite', 'numba',
+
+        # ── vosk (~52 MB) ────────────────────────────────────────────────
+        # NOT directly imported. speech_recognition uses Google STT.
+        'vosk',
+
+        # ── Heavy science libs NOT used ──────────────────────────────────
         'tensorflow', 'tensorflow_probability',
         'pandas', 'matplotlib', 'sympy',
-        'jax', 'jaxlib', 'numba',
+        'jax', 'jaxlib',
         'IPython', 'ipykernel', 'ipywidgets',
         'pyarrow', 'dask', 'seaborn', 'skimage',
         'xarray', 'statsmodels', 'plotly',
-        # ── Tkinter (not used, saves ~20MB) ──────────────────────────────
+        'networkx',
+
+        # ── Tkinter (~20 MB) ────────────────────────────────────────────
         'tkinter', '_tkinter', 'tk',
-        # ── Test frameworks ──────────────────────────────────────────────
+
+        # ── Unused wake word engines ─────────────────────────────────────
+        'pvporcupine', 'pvrecorder',
+        'sounddevice',
+
+        # ── Test / Build tools ───────────────────────────────────────────
         'pytest', 'unittest', 'doctest',
-        # ── Build tools (not needed at runtime) ──────────────────────────
-        'pip',
-        # ── Pythonwin / win32ui (MFC, ~7MB) ──────────────────────────────
+        'pip', 'setuptools', 'wheel',
         'Pythonwin', 'win32ui',
     ],
     noarchive=False,
-    optimize=0,
+    optimize=1,        # bytecode optimization (strips asserts + docstrings)
 )
+
 pyz = PYZ(a.pure)
 
 exe = EXE(
@@ -140,7 +222,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    console=True,
+    console=True,       # Keep console for debug visibility; set False for release
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -149,26 +231,41 @@ exe = EXE(
     icon=str(ROOT / 'assets' / 'kree.ico'),
     version=str(ROOT / 'version_info.txt'),
 )
-# ── Trim bloated binaries before COLLECT ──────────────────────────────
-# Playwright ships a full node.exe (~90MB) — not needed, Playwright uses
-# its own browser install at runtime. OpenCV FFmpeg DLL (~29MB) — not
-# needed, we only use camera capture not video file I/O.
+
+# ── Trim bloated binaries before COLLECT ──────────────────────────────────────
 _EXCLUDE_BINARIES = {
-    'node.exe',                      # Playwright node runtime (~90MB)
-    'opencv_videoio_ffmpeg',          # OpenCV FFmpeg (~29MB)
-    'mfc140u.dll',                    # MFC for Pythonwin (~6MB)
+    'node.exe',                          # Playwright node runtime (~90 MB)
+    'opencv_videoio_ffmpeg',             # OpenCV FFmpeg DLL (~29 MB)
+    'mfc140u.dll',                       # MFC for Pythonwin (~6 MB)
+    'qt6',                               # Any leaked Qt6 DLLs
+    'qt5',                               # Any leaked Qt5 DLLs
+    'pyside6',                           # Any leaked PySide6 binaries
+    'shiboken6',                         # PySide6 binding generator
+    'libcrypto-3-x64.dll',              # Duplicate OpenSSL (keep one copy)
 }
 
+# Also strip .tflite model duplicates (we only use ONNX inference)
+_EXCLUDE_EXTENSIONS = {'.tflite'}
+
 def _should_keep(name_tuple):
-    name = name_tuple[0].lower() if name_tuple else ''
-    return not any(exc in name for exc in _EXCLUDE_BINARIES)
+    if not name_tuple:
+        return True
+    name = name_tuple[0].lower()
+    # Check binary name exclusions
+    if any(exc in name for exc in _EXCLUDE_BINARIES):
+        return False
+    # Check extension exclusions in data files
+    if any(name.endswith(ext) for ext in _EXCLUDE_EXTENSIONS):
+        return False
+    return True
 
 trimmed_binaries = [b for b in a.binaries if _should_keep(b)]
+trimmed_datas = [d for d in a.datas if _should_keep(d)]
 
 coll = COLLECT(
     exe,
     trimmed_binaries,
-    a.datas,
+    trimmed_datas,
     strip=False,
     upx=False,
     upx_exclude=[],

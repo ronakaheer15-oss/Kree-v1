@@ -23,6 +23,8 @@ import mss.tools
 import pyaudio
 from pathlib import Path
 
+from core import vault
+
 try:
     import PIL.Image
     _PIL_OK = True
@@ -72,15 +74,20 @@ SYSTEM_PROMPT = (
 
 
 def _get_api_key() -> str:
+    key = vault.load_api_key(API_CONFIG_PATH).strip()
+    if key:
+        return key
+
     try:
         with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
             keys = json.load(f)
-        key = keys.get("gemini_api_key", "")
-        if not key:
-            raise ValueError("gemini_api_key not found")
-        return key
     except Exception as e:
-        raise RuntimeError(f"Could not load API key: {e}")
+        raise RuntimeError(f"Could not load API key: {e}") from e
+
+    key = str(keys.get("gemini_api_key", "")).strip()
+    if not key:
+        raise RuntimeError("gemini_api_key not found")
+    return key
 
 
 def _get_camera_index() -> int:

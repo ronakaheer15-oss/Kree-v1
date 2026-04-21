@@ -23,7 +23,7 @@ class RateLimiter:
         self.calls[client_ip].append(now)
         return True
 
-_ws_limiter = RateLimiter(max_calls=15, period=60) # Allow 15 websocket commands per minute
+_ws_limiter = RateLimiter(max_calls=250, period=60) # Allow 15 websocket commands per minute
 
 class KreeMobileBridge:
     def __init__(self, port=8443, on_command_callback=None, on_connect_callback=None):

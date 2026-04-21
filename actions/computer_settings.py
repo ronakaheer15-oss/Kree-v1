@@ -288,11 +288,31 @@ def write_on_screen(text: str):
 
 def take_screenshot():
     if _OS == "Windows":
-        pyautogui.hotkey("win", "shift", "s")
+        try:
+            import os
+            from datetime import datetime
+
+            import mss
+            from PIL import Image
+
+            desktop_dir = os.path.join(os.path.expanduser("~"), "Desktop", "Kree Bridge")
+            os.makedirs(desktop_dir, exist_ok=True)
+            with mss.mss() as sct:
+                monitor = sct.monitors[1]
+                img = sct.grab(monitor)
+                filename = f"kree_screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                path = os.path.join(desktop_dir, filename)
+                Image.frombytes("RGB", img.size, img.bgra, "raw", "BGRX").save(path, "PNG")
+            return path
+        except Exception:
+            pyautogui.hotkey("win", "shift", "s")
+            return "failed"
     elif _OS == "Darwin":
         pyautogui.hotkey("command", "shift", "3")
+        return "failed"
     else:
         pyautogui.hotkey("ctrl", "print_screen")
+        return "failed"
 
 def lock_screen():
     if _OS == "Windows":

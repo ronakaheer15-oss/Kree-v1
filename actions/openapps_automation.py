@@ -60,10 +60,15 @@ def _get_openapps_dir() -> Path:
     # actions/ -> project root candidates
     here = Path(__file__).resolve()
     candidates = [
+        here.parents[3] / "_Related_Projects" / "OpenApps-main",
+        here.parents[2] / "_Related_Projects" / "OpenApps-main",
+        here.parents[1] / "_Related_Projects" / "OpenApps-main",
         here.parents[3] / "OpenApps-main",
         here.parents[2] / "OpenApps-main",
         here.parents[1] / "OpenApps-main",
+        Path.cwd() / "_Related_Projects" / "OpenApps-main",
         Path.cwd() / "OpenApps-main",
+        Path("E:/Mark-XXX-main/_Related_Projects/OpenApps-main"),
         Path("E:/OpenApps-main"), # Force hardcode just in case it's specifically in the E root
     ]
     for c in candidates:

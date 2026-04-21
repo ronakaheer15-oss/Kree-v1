@@ -2,7 +2,7 @@
 import numpy as np
 from openwakeword.model import Model
 
-model = Model(wakeword_models=["hey_mycroft"], inference_framework="onnx")
+model = Model(wakeword_models=["hey_jarvis"], inference_framework="onnx")
 print("Model loaded OK")
 
 # Feed a chunk of silence to see what keys come back

@@ -10,6 +10,6 @@
   "disable_lock_screen": true,
   "kree_voice": "Kore",
   "welcome_voice_enabled": true,
-  "intelligence_mode": "CLOUD_GEMINI",
+  "intelligence_mode": "LOCAL_NEXUS_E4B",
   "auto_start_configured": true
 }

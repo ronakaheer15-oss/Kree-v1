@@ -38,7 +38,7 @@ API_FILE   = CONFIG_DIR / "api_keys.json"
 # _STITCH assets are bundled inside the app
 if getattr(sys, "frozen", False):
     # In bundle, stitch is at root
-    _STITCH = BASE_DIR / "stitch_core_system_dashboard" / "stitch_core_system_dashboard"
+    _STITCH = BASE_DIR / "stitch_core_system_dashboard"
 else:
     # In dev, stitch is a peer to the project folder
     _STITCH = BASE_DIR.parent / "stitch_core_system_dashboard" / "stitch_core_system_dashboard"
@@ -54,23 +54,6 @@ _BOOT_HTML = """
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Kree AI</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            colors: {
-              primary: '#00dc82',
-            },
-            fontFamily: {
-              display: ['Inter', 'Segoe UI', 'sans-serif'],
-              mono: ['Consolas', 'monospace'],
-            }
-          }
-        }
-      }
-    </script>
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
     <style>
         html, body {
             margin: 0;
@@ -790,6 +773,11 @@ _API_KEY_DIALOG_JS = """
 class _DashboardAPI:
     def __init__(self, owner):
         self._owner = owner
+
+    def send_text(self, text: str):
+        if callable(self._owner._on_user_text_cb):
+            self._owner._on_user_text_cb(text)
+        return "ok"
 
     def get_auth_state(self):
         from core.auth_manager import AuthManager

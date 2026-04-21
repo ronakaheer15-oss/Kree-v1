@@ -22,14 +22,25 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install dependencies (optimized)
         run: |
           python -m pip install --upgrade pip
+
+          # Install most requirements normally
           python -m pip install -r requirements.txt
+
+          # Swap full OpenCV for headless (saves ~50 MB)
+          python -m pip uninstall opencv-python -y
+          python -m pip install opencv-python-headless>=4.9.0
+
+          # Ensure resemblyzer doesn't pull in torch
+          python -m pip install --no-deps resemblyzer>=0.1.4
+
+          # Build tools
           python -m pip install pyinstaller
 
       - name: Install Playwright browsers
-        run: python -m playwright install
+        run: python -m playwright install chromium
 
       - name: Build executable
         run: pyinstaller "Kree AI.spec"
