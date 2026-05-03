@@ -8,8 +8,8 @@ import os
 from pathlib import Path
 from typing import Callable
 
-from agent.planner       import create_plan, replan
-from agent.error_handler import analyze_error, generate_fix, ErrorDecision
+from kree.agent.planner       import create_plan, replan
+from kree.agent.error_handler import analyze_error, generate_fix, ErrorDecision
 
 
 def get_base_dir() -> Path:
@@ -174,64 +174,64 @@ def _translate_to_goal_language(content: str, goal: str) -> str:
 def _call_tool(tool: str, parameters: dict, speak: Callable | None) -> str:
 
     if tool == "open_app":
-        from actions.open_app import open_app
+        from kree.actions.open_app import open_app
         return open_app(parameters=parameters, player=None) or "Done."
 
     elif tool == "web_search":
-        from actions.web_search import web_search
+        from kree.actions.web_search import web_search
         return web_search(parameters=parameters, player=None) or "Done."
 
     elif tool == "browser_control":
-        from actions.browser_control import browser_control
+        from kree.actions.browser_control import browser_control
         return browser_control(parameters=parameters, player=None) or "Done."
 
     elif tool == "file_controller":
-        from actions.file_controller import file_controller
+        from kree.actions.file_controller import file_controller
         return file_controller(parameters=parameters, player=None) or "Done."
 
     elif tool == "cmd_control":
-        from actions.cmd_control import cmd_control
+        from kree.actions.cmd_control import cmd_control
         return cmd_control(parameters=parameters, player=None) or "Done."
 
     elif tool == "code_helper":
-        from actions.code_helper import code_helper
+        from kree.actions.code_helper import code_helper
         return code_helper(parameters=parameters, player=None, speak=speak) or "Done."
 
     elif tool == "dev_agent":
-        from actions.dev_agent import dev_agent
+        from kree.actions.dev_agent import dev_agent
         return dev_agent(parameters=parameters, player=None, speak=speak) or "Done."
 
     elif tool == "screen_process":
-        from actions.screen_processor import screen_process
+        from kree.actions.screen_processor import screen_process
         screen_process(parameters=parameters, player=None)
         return "Screen captured and analyzed."
 
     elif tool == "send_message":
-        from actions.send_message import send_message
+        from kree.actions.send_message import send_message
         return send_message(parameters=parameters, player=None) or "Done."
 
     elif tool == "reminder":
-        from actions.reminder import reminder
+        from kree.actions.reminder import reminder
         return reminder(parameters=parameters, player=None) or "Done."
 
     elif tool == "youtube_video":
-        from actions.youtube_video import youtube_video
+        from kree.actions.youtube_video import youtube_video
         return youtube_video(parameters=parameters, player=None) or "Done."
 
     elif tool == "weather_report":
-        from actions.weather_report import weather_action
+        from kree.actions.weather_report import weather_action
         return weather_action(parameters=parameters, player=None) or "Done."
 
     elif tool == "computer_settings":
-        from actions.computer_settings import computer_settings
+        from kree.actions.computer_settings import computer_settings
         return computer_settings(parameters=parameters, player=None) or "Done."
 
     elif tool == "desktop_control":
-        from actions.desktop import desktop_control
+        from kree.actions.desktop import desktop_control
         return desktop_control(parameters=parameters, player=None) or "Done."
 
     elif tool == "computer_control":
-        from actions.computer_control import computer_control
+        from kree.actions.computer_control import computer_control
         return computer_control(parameters=parameters, player=None) or "Done."
 
     elif tool == "generated_code":
@@ -241,7 +241,7 @@ def _call_tool(tool: str, parameters: dict, speak: Callable | None) -> str:
         return _run_generated_code(description, speak=speak)
 
     elif tool == "flight_finder":
-        from actions.flight_finder import flight_finder
+        from kree.actions.flight_finder import flight_finder
         return flight_finder(parameters=parameters, player=None, speak=speak) or "Done."
 
     else:

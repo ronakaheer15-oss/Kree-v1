@@ -454,7 +454,7 @@ TOOL_DECLARATIONS = [
         "Direct computer control: type text, click buttons, use keyboard shortcuts, "
         "scroll, move mouse, take screenshots, fill forms, find elements on screen. "
         "Use when the user wants to interact with any app on the computer directly. "
-        "Can generate random data for forms or use user's real info from memory."
+        "Can generate random data for forms or use user's real info from kree.memory."
     ),
     "parameters": {
         "type": "OBJECT",

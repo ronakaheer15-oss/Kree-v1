@@ -48,7 +48,7 @@ class TaskQueue:
 
     def _get_executor(self):
         if self._executor is None:
-            from agent.executor import AgentExecutor
+            from kree.agent.executor import AgentExecutor
             self._executor = AgentExecutor()
         return self._executor
 

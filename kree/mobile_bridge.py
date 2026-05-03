@@ -135,7 +135,7 @@ class KreeMobileBridge:
                 try:
                     handle, pin = client_token.split(":", 1)
                     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-                    from core.auth_manager import AuthManager
+                    from kree.core.auth_manager import AuthManager
                     # Find user by handle and verify PIN
                     result = AuthManager.sign_in_user(handle, pin)
                     if result.get("ok"):

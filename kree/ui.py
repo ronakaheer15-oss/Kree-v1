@@ -7,12 +7,12 @@ from pathlib import Path
 from ctypes import wintypes
 
 import webview  # type: ignore[import]
-from memory.config_manager import (  # type: ignore[import]
+from kree.memory.config_manager import (  # type: ignore[import]
     load_audio_settings as cfg_load_audio_settings,
     save_audio_settings as cfg_save_audio_settings,
 )
-from core.auth_ui import AUTH_FLOW_JS  # type: ignore[import]
-from core.version import APP_VERSION  # type: ignore[import]
+from kree.core.auth_ui import AUTH_FLOW_JS  # type: ignore[import]
+from kree.core.version import APP_VERSION  # type: ignore[import]
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 # ── Paths ────────────────────────────────────────────────────────────────────
@@ -121,13 +121,13 @@ _BOOT_HTML = """
 """
 
 try:
-    from core.security_ui import LOCK_SCREEN_JS, SETTINGS_MODAL_JS # type: ignore[import]
+    from kree.core.security_ui import LOCK_SCREEN_JS, SETTINGS_MODAL_JS # type: ignore[import]
 except ImportError:
     LOCK_SCREEN_JS = ""
     SETTINGS_MODAL_JS = ""
 
 try:
-    from core.update_service import (  # type: ignore[import]
+    from kree.core.update_service import (  # type: ignore[import]
         apply_update as update_apply_update,
         check_for_updates as update_check_for_updates,
         download_update as update_download_update,
@@ -144,7 +144,7 @@ except ImportError:
     update_save_settings = None
 
 try:
-    from core.api_setup_ui import API_SETUP_JS # type: ignore[import]
+    from kree.core.api_setup_ui import API_SETUP_JS # type: ignore[import]
 except ImportError:
     API_SETUP_JS = ""
 
@@ -780,7 +780,7 @@ class _DashboardAPI:
         return "ok"
 
     def get_auth_state(self):
-        from core.auth_manager import AuthManager
+        from kree.core.auth_manager import AuthManager
         api_ready = getattr(self._owner, '_api_key_ready', False)
         users = AuthManager.get_user_count()
         return {
@@ -790,14 +790,14 @@ class _DashboardAPI:
         }
 
     def create_user(self, handle, password, email="", name=""):
-        from core.auth_manager import AuthManager
+        from kree.core.auth_manager import AuthManager
         try:
             return AuthManager.create_user(handle, password, email, name)
         except Exception as e:
             return {"ok": False, "message": str(e)}
 
     def sign_in_user(self, handle, password):
-        from core.auth_manager import AuthManager
+        from kree.core.auth_manager import AuthManager
         import os
         res = AuthManager.sign_in_user(handle, password)
         if res.get("ok"):
@@ -808,15 +808,15 @@ class _DashboardAPI:
         return res
 
     def set_user_pin(self, user_id, pin):
-        from core.auth_manager import AuthManager
+        from kree.core.auth_manager import AuthManager
         return AuthManager.set_user_pin(user_id, pin)
 
     def verify_user_pin(self, user_id, pin):
-        from core.auth_manager import AuthManager
+        from kree.core.auth_manager import AuthManager
         return AuthManager.verify_user_pin(user_id, pin)
 
     def save_user_api_key(self, user_id, key):
-        from core.auth_manager import AuthManager
+        from kree.core.auth_manager import AuthManager
         import os
         pwd = getattr(self._owner, '_temp_password', "")
         res = AuthManager.save_user_api_key(user_id, key, pwd)
@@ -827,7 +827,7 @@ class _DashboardAPI:
         return res
         
     def on_auth_flow_complete(self):
-        from core.auth_manager import AuthManager
+        from kree.core.auth_manager import AuthManager
         user = getattr(self._owner, '_active_user', None)
         if user:
             AuthManager.mark_login_complete(user["user_id"])
@@ -846,7 +846,7 @@ class _DashboardAPI:
 
     def verify_session_pin(self, pin):
         """V4: Lightweight mid-session PIN re-verification for sensitive tools."""
-        from core.auth_manager import AuthManager
+        from kree.core.auth_manager import AuthManager
         user = getattr(self._owner, '_active_user', None)
         if not user:
             return {"ok": False, "message": "No active user session."}
@@ -1108,7 +1108,7 @@ class _DashboardAPI:
             import asyncio
             import os
             import base64
-            from mobile_bridge import KreeMobileBridge
+            from kree.mobile_bridge import KreeMobileBridge
             
             def transmission_worker(file_paths):
                 if not getattr(self._owner, 'mobile_bridge', None): return
@@ -1243,7 +1243,7 @@ class _DashboardAPI:
     def get_pwa_status(self):
         """Return PWA server status for the Connect tab."""
         try:
-            from serve_pwa import get_server_status, get_pwa_url
+            from kree.serve_pwa import get_server_status, get_pwa_url
             status = get_server_status()
             status["url"] = get_pwa_url()
             return json.dumps(status)
@@ -1255,7 +1255,7 @@ class _DashboardAPI:
     def reset_pwa_token(self):
         """Generate a new auth token, invalidating all connected devices."""
         try:
-            from serve_pwa import reset_token, get_pwa_url
+            from kree.serve_pwa import reset_token, get_pwa_url
             new_token = reset_token()
             new_url = get_pwa_url()
             # Push new QR to UI
@@ -1466,42 +1466,42 @@ class _DashboardAPI:
 
     def get_update_state(self):
         try:
-            from core.update_service import get_update_state # type: ignore[import]
+            from kree.core.update_service import get_update_state # type: ignore[import]
             return get_update_state()
         except:
             return {}
 
     def check_for_updates(self):
         try:
-            from core.update_service import check_for_updates # type: ignore[import]
+            from kree.core.update_service import check_for_updates # type: ignore[import]
             return check_for_updates()
         except Exception as e:
             return {"ok": False, "message": str(e)}
 
     def download_update(self, version: str):
         try:
-            from core.update_service import download_update # type: ignore[import]
+            from kree.core.update_service import download_update # type: ignore[import]
             return download_update(version)
         except Exception as e:
             return {"ok": False, "message": str(e)}
 
     def apply_update(self, version: str):
         try:
-            from core.update_service import apply_update # type: ignore[import]
+            from kree.core.update_service import apply_update # type: ignore[import]
             return apply_update(version)
         except Exception as e:
             return {"ok": False, "message": str(e)}
 
     def open_update_folder(self):
         try:
-            from core.update_service import open_update_folder # type: ignore[import]
+            from kree.core.update_service import open_update_folder # type: ignore[import]
             return open_update_folder()
         except:
             return False
 
     def save_update_server_url(self, url: str):
         try:
-            from core.update_service import save_update_settings # type: ignore[import]
+            from kree.core.update_service import save_update_settings # type: ignore[import]
             return save_update_settings({"manifest_url": url})
         except:
             return {"ok": False}
@@ -1543,7 +1543,7 @@ class _DashboardAPI:
             except Exception:
                 pass
             
-            from core.updater import run_installer_and_exit
+            from kree.core.updater import run_installer_and_exit
             if not run_installer_and_exit():
                 os._exit(0)
                 
@@ -1627,25 +1627,25 @@ class _DashboardAPI:
         return update_open_folder()
 
     def is_pin_setup_required(self):
-        import core.vault as vault # type: ignore[import]
+        import kree.core.vault as vault # type: ignore[import]
         return not vault.is_master_pin_set()
         
     def setup_master_pin(self, pin: str):
-        import core.vault as vault # type: ignore[import]
+        import kree.core.vault as vault # type: ignore[import]
         vault.setup_master_pin(pin)
         return True
         
     def verify_master_pin(self, pin: str):
-        import core.vault as vault # type: ignore[import]
+        import kree.core.vault as vault # type: ignore[import]
         return vault.verify_master_pin(pin)
         
     def trigger_biometrics(self):
         # Allow Windows Hello as fallback if configured or active
-        import core.biometrics as bio # type: ignore[import]
+        import kree.core.biometrics as bio # type: ignore[import]
         return bio.prompt_windows_hello("Unlock Kree Aegis Matrix")
 
     def is_unlock_trusted(self):
-        import core.vault as vault # type: ignore[import]
+        import kree.core.vault as vault # type: ignore[import]
         return vault.is_unlock_trusted()
 
     def on_pin_unlocked(self):
@@ -1771,7 +1771,7 @@ class KreeUI:
     def _api_keys_exist(self):
         if not self._active_user:
             return False
-        import core.auth_store as auth_store # type: ignore[import]
+        import kree.core.auth_store as auth_store # type: ignore[import]
         return auth_store.user_has_api_key(str(self._active_user.get("user_id", "")))
 
     def _eval(self, js: str):
@@ -1816,7 +1816,7 @@ class KreeUI:
         self._save_user_api_key(str(self._active_user.get("user_id", "")), key)
 
     def _get_auth_state(self):
-        import core.auth_store as auth_store # type: ignore[import]
+        import kree.core.auth_store as auth_store # type: ignore[import]
         state = auth_store.get_auth_state()
         self._active_user = state.get("active_user")
         if self._active_user:
@@ -1824,35 +1824,35 @@ class KreeUI:
         return state
 
     def _create_user(self, handle: str, password: str, email: str = "", display_name: str = ""):
-        import core.auth_store as auth_store # type: ignore[import]
+        import kree.core.auth_store as auth_store # type: ignore[import]
         result = auth_store.create_user(handle, password, email, display_name)
         self._active_user = result.get("user")
         self._api_key_ready = bool(self._active_user and self._active_user.get("has_api_key"))
         return result
 
     def _sign_in_user(self, identifier: str, password: str):
-        import core.auth_store as auth_store # type: ignore[import]
+        import kree.core.auth_store as auth_store # type: ignore[import]
         result = auth_store.sign_in_user(identifier, password)
         self._active_user = result.get("user")
         self._api_key_ready = bool(self._active_user and self._active_user.get("has_api_key"))
         return result
 
     def _set_user_pin(self, user_id: str, pin: str):
-        import core.auth_store as auth_store # type: ignore[import]
+        import kree.core.auth_store as auth_store # type: ignore[import]
         result = auth_store.set_user_pin(user_id, pin)
         self._active_user = result.get("user")
         self._api_key_ready = bool(self._active_user and self._active_user.get("has_api_key"))
         return result
 
     def _verify_user_pin(self, user_id: str, pin: str):
-        import core.auth_store as auth_store # type: ignore[import]
+        import kree.core.auth_store as auth_store # type: ignore[import]
         result = auth_store.verify_user_pin(user_id, pin)
         self._active_user = result.get("user")
         self._api_key_ready = bool(self._active_user and self._active_user.get("has_api_key"))
         return result
 
     def _save_user_api_key(self, user_id: str, key: str):
-        import core.auth_store as auth_store # type: ignore[import]
+        import kree.core.auth_store as auth_store # type: ignore[import]
         result = auth_store.save_user_api_key(user_id, key)
         self._active_user = result.get("user")
         self._api_key_ready = True
@@ -1892,7 +1892,7 @@ class KreeUI:
     def _set_analytics_enabled(self, enabled: bool):
         """Called from Identity Gate analytics opt-in UI."""
         try:
-            from core.analytics import set_analytics_enabled
+            from kree.core.analytics import set_analytics_enabled
             set_analytics_enabled(bool(enabled))
         except Exception as e:
             print(f"[KREE] Analytics preference save failed: {e}")
@@ -2036,14 +2036,14 @@ class KreeUI:
 
         # ── Bypass: skip login + PIN when user toggled "Disable Lock Screen" ──
         try:
-            from memory.config_manager import AUDIO_CONFIG_FILE  # type: ignore[import]
+            from kree.memory.config_manager import AUDIO_CONFIG_FILE  # type: ignore[import]
             import json as _json
             if AUDIO_CONFIG_FILE.exists():
                 _st = _json.loads(AUDIO_CONFIG_FILE.read_text(encoding="utf-8"))
                 if _st.get("disable_lock_screen", False):
                     # Auto-load last saved user so API key is still available
                     try:
-                        import core.auth_store as auth_store  # type: ignore[import]
+                        import kree.core.auth_store as auth_store  # type: ignore[import]
                         state = auth_store.get_auth_state()
                         self._active_user = state.get("active_user")
                         if self._active_user:
@@ -2070,7 +2070,7 @@ class KreeUI:
             return
         
         try:
-            from memory.config_manager import AUDIO_CONFIG_FILE # type: ignore[import]
+            from kree.memory.config_manager import AUDIO_CONFIG_FILE # type: ignore[import]
             import json
             if AUDIO_CONFIG_FILE.exists():
                 st = json.loads(AUDIO_CONFIG_FILE.read_text(encoding="utf-8"))
@@ -2081,7 +2081,7 @@ class KreeUI:
         except Exception: pass
 
         try:
-            from core.vault import is_unlock_trusted # type: ignore[import]
+            from kree.core.vault import is_unlock_trusted # type: ignore[import]
             if is_unlock_trusted():
                 self._is_unlocked = True
                 self._lock_injected = False
@@ -2102,7 +2102,7 @@ class KreeUI:
 
     def _mark_unlocked(self):
         try:
-            import core.vault as vault # type: ignore[import]
+            import kree.core.vault as vault # type: ignore[import]
             vault.remember_unlock_session()
         except Exception:
             pass
@@ -2137,7 +2137,7 @@ class KreeUI:
         try:
             # Sync persistent log history into the UI display
             try:
-                import memory.history_manager as hist
+                import kree.memory.history_manager as hist
                 saved = hist.load_memory()
                 if saved and not self.chat_history:
                     for turn in saved:

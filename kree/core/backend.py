@@ -75,7 +75,7 @@ def _init_supabase():
 def _get_user_id() -> str:
     """Get the anonymous user ID from analytics module."""
     try:
-        from core.analytics import get_user_id
+        from kree.core.analytics import get_user_id
         return get_user_id()
     except Exception:
         return "unknown"

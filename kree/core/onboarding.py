@@ -3,7 +3,7 @@ import os
 import shutil
 
 def is_first_launch() -> bool:
-    import core.user_profile as up
+    import kree.core.user_profile as up
     profile = up.get_user_profile()
     return not bool(profile.get("name"))
 
@@ -57,7 +57,7 @@ async def first_time_setup(live_session):
         chrome_exe = shutil.which("chrome") or shutil.which("google-chrome") or "Chrome execution not found"
         chrome_prof = find_chrome_profile()
         
-        import core.user_profile as up
+        import kree.core.user_profile as up
         up.update_user_profile({
             "os": sys_os,
             "browser": chrome_exe,

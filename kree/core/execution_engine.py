@@ -20,13 +20,13 @@ async def run_parallel_tasks(tasks, live_session=None):
         def execute():
             try:
                 if action == "open_app":
-                    import actions.open_app as o_app # type: ignore
+                    import kree.actions.open_app as o_app # type: ignore
                     return o_app.open_app(target)
                 elif action == "browser_control":
-                    import actions.browser_control as bc # type: ignore
+                    import kree.actions.browser_control as bc # type: ignore
                     return bc.browser_action(url=target, action_type="navigate")
                 elif action == "computer_settings":
-                    import actions.computer_settings as cs # type: ignore
+                    import kree.actions.computer_settings as cs # type: ignore
                     return cs.computer_settings(target)
                 return "Unknown action."
             except Exception as e:

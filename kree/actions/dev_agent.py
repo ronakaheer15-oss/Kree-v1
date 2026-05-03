@@ -25,7 +25,7 @@ def get_base_dir():
 BASE_DIR           = get_base_dir()
 API_CONFIG_PATH    = BASE_DIR / "config" / "api_keys.json"
 # Aegis Security: Native Sandbox Enforcement
-import core.security as security # type: ignore[import]
+import kree.core.security as security # type: ignore[import]
 PROJECTS_DIR       = security.get_workspace_path()
 MAX_FIX_ATTEMPTS   = 4
 MODEL_PLANNER      = "gemini-2.5-flash"
@@ -33,7 +33,7 @@ MODEL_WRITER       = "gemini-2.5-flash-lite"
 
 
 def _get_api_key() -> str:
-    import core.vault as vault # type: ignore[import]
+    import kree.core.vault as vault # type: ignore[import]
     return vault.load_api_key(API_CONFIG_PATH)
 
 

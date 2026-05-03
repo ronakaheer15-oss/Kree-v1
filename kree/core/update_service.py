@@ -23,7 +23,7 @@ from urllib.parse import urljoin, urlparse
 
 import requests  # type: ignore[import]
 
-from core.version import APP_NAME, APP_VERSION  # type: ignore[import]
+from kree.core.version import APP_NAME, APP_VERSION  # type: ignore[import]
 
 
 def get_base_dir() -> Path:

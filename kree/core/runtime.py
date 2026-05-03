@@ -6,7 +6,7 @@ Handles the critical difference between:
   - Frozen mode: __file__ points inside _MEIPASS temp folder
 
 Usage:
-    from core.runtime import BUNDLE_DIR, EXE_DIR, APP_DATA_DIR
+    from kree.core.runtime import BUNDLE_DIR, EXE_DIR, APP_DATA_DIR
 """
 from __future__ import annotations
 

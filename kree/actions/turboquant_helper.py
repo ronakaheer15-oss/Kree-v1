@@ -16,7 +16,7 @@ def turboquant_helper(
     player=None,
     session_memory=None,
 ) -> str:
-    from core.turboquant_helper import (  # type: ignore[import]
+    from kree.core.turboquant_helper import (  # type: ignore[import]
         build_environment,
         detect_support,
         export_state,

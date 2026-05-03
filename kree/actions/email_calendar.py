@@ -7,14 +7,14 @@ from pathlib import Path
 import json
 from datetime import datetime
 
-from memory.config_manager import load_email_settings
+from kree.memory.config_manager import load_email_settings
 
 def _get_drafts_path() -> Path:
-    from memory.config_manager import BASE_DIR
+    from kree.memory.config_manager import BASE_DIR
     return BASE_DIR / "memory" / "drafts.txt"
 
 def _get_calendar_path() -> Path:
-    from memory.config_manager import BASE_DIR
+    from kree.memory.config_manager import BASE_DIR
     return BASE_DIR / "memory" / "calendar.json"
 
 def read_inbox(max_emails: int = 5) -> str:

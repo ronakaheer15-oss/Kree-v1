@@ -156,7 +156,7 @@ def _search_flights_browser(
     Opens Google Flights in browser, waits for results, scrapes text.
     Returns (raw_text, page_url).
     """
-    from actions.browser_control import browser_control
+    from kree.actions.browser_control import browser_control
     import time
 
     url = _build_google_flights_url(

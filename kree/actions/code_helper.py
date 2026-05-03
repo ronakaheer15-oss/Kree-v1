@@ -51,7 +51,7 @@ def _clean_code(text: str) -> str:
 
 def _resolve_save_path(output_path: str, language: str) -> Path:
     # Aegis Security: Force all code into the Glass Room Sandbox
-    import core.security as security # type: ignore[import]
+    import kree.core.security as security # type: ignore[import]
     workspace = security.get_workspace_path()
     
     ext_map = {
@@ -82,7 +82,7 @@ def _read_file(file_path: str) -> tuple[str, str]:
     p = Path(file_path)
     
     # Aegis Security: Prevent Kree from reading unauthorized sensitive system files
-    import core.security as security # type: ignore[import]
+    import kree.core.security as security # type: ignore[import]
     if not security.is_path_safe(p):
         return "", f"Access Denied: Path is outside the Kree Sandbox."
         

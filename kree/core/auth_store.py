@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from memory.config_manager import CONFIG_DIR, ensure_config_dir
+from kree.memory.config_manager import CONFIG_DIR, ensure_config_dir
 
 from core import vault
 

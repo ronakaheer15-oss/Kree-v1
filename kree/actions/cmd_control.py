@@ -216,7 +216,7 @@ def cmd_control(
         return f"Blocked for safety: {reason}"
 
     # Aegis Security: Command Override Lock
-    import core.security as security # type: ignore[import]
+    import kree.core.security as security # type: ignore[import]
     if security.is_command_destructive(command):
         import ctypes
         MB_YESNO = 4

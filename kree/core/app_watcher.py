@@ -45,7 +45,7 @@ async def watch_processes(live_session=None):
             continue
             
         try:
-            import core.automations as autos
+            import kree.core.automations as autos
             for app_name in new_apps:
                 trigger_speech = autos.get_app_trigger(app_name)
                 if trigger_speech:

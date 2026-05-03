@@ -301,7 +301,7 @@ def _open_single_app(app_name: str, player=None) -> str:
     
     # [Dynamic Custom Chrome Profile Bypasser]
     if "chrome" in normalized:
-        import core.user_profile as up
+        import kree.core.user_profile as up
         profile = up.get_user_profile()
         target_profile = profile.get("browser_profile", "Default")
         

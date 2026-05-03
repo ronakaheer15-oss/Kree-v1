@@ -96,12 +96,12 @@ except ImportError:
 
 import time
 import wave
-from ui import JarvisUI  # type: ignore[import]
-from memory.memory_manager import load_memory, update_memory, format_memory_for_prompt  # type: ignore[import]
-from memory.config_manager import load_audio_settings, load_telemetry_settings  # type: ignore[import]
-from core.telemetry import TelemetryEvents, TelemetryLogger, export_session_trace, load_session_events  # type: ignore[import]
+from kree.ui import JarvisUI  # type: ignore[import]
+from kree.memory.memory_manager import load_memory, update_memory, format_memory_for_prompt  # type: ignore[import]
+from kree.memory.config_manager import load_audio_settings, load_telemetry_settings  # type: ignore[import]
+from kree.core.telemetry import TelemetryEvents, TelemetryLogger, export_session_trace, load_session_events  # type: ignore[import]
 
-from agent.task_queue import get_queue  # type: ignore[import]
+from kree.agent.task_queue import get_queue  # type: ignore[import]
 
 
 class LazyToolLoader:
@@ -109,26 +109,26 @@ class LazyToolLoader:
         def wrapper(*args, **kwargs):
             import importlib
             module_map = {
-                "flight_finder": ("actions.flight_finder", "flight_finder"),
-                "open_app": ("actions.open_app", "open_app"),
-                "downloader_updater": ("actions.downloader_updater", "downloader_updater"),
-                "turboquant_helper": ("actions.turboquant_helper", "turboquant_helper"),
-                "openapps_automation": ("actions.openapps_automation", "openapps_automation"),
-                "weather_action": ("actions.weather_report", "weather_action"),
-                "send_message": ("actions.send_message", "send_message"),
-                "reminder": ("actions.reminder", "reminder"),
-                "computer_settings": ("actions.computer_settings", "computer_settings"),
-                "screen_process": ("actions.screen_processor", "screen_process"),
-                "youtube_video": ("actions.youtube_video", "youtube_video"),
-                "cmd_control": ("actions.cmd_control", "cmd_control"),
-                "desktop_control": ("actions.desktop", "desktop_control"),
-                "browser_control": ("actions.browser_control", "browser_control"),
-                "file_controller": ("actions.file_controller", "file_controller"),
-                "code_helper": ("actions.code_helper", "code_helper"),
-                "dev_agent": ("actions.dev_agent", "dev_agent"),
-                "web_search_action": ("actions.web_search", "web_search_action"),
-                "computer_control": ("actions.computer_control", "computer_control"),
-                "productivity_manager": ("actions.email_calendar", "productivity_manager")
+                "flight_finder": ("kree.actions.flight_finder", "flight_finder"),
+                "open_app": ("kree.actions.open_app", "open_app"),
+                "downloader_updater": ("kree.actions.downloader_updater", "downloader_updater"),
+                "turboquant_helper": ("kree.actions.turboquant_helper", "turboquant_helper"),
+                "openapps_automation": ("kree.actions.openapps_automation", "openapps_automation"),
+                "weather_action": ("kree.actions.weather_report", "weather_action"),
+                "send_message": ("kree.actions.send_message", "send_message"),
+                "reminder": ("kree.actions.reminder", "reminder"),
+                "computer_settings": ("kree.actions.computer_settings", "computer_settings"),
+                "screen_process": ("kree.actions.screen_processor", "screen_process"),
+                "youtube_video": ("kree.actions.youtube_video", "youtube_video"),
+                "cmd_control": ("kree.actions.cmd_control", "cmd_control"),
+                "desktop_control": ("kree.actions.desktop", "desktop_control"),
+                "browser_control": ("kree.actions.browser_control", "browser_control"),
+                "file_controller": ("kree.actions.file_controller", "file_controller"),
+                "code_helper": ("kree.actions.code_helper", "code_helper"),
+                "dev_agent": ("kree.actions.dev_agent", "dev_agent"),
+                "web_search_action": ("kree.actions.web_search", "web_search_action"),
+                "computer_control": ("kree.actions.computer_control", "computer_control"),
+                "productivity_manager": ("kree.actions.email_calendar", "productivity_manager")
             }
             if name in module_map:
                 mod_name, func_name = module_map[name]
@@ -160,7 +160,7 @@ web_search_action = lazy_tools.web_search_action
 computer_control = lazy_tools.computer_control
 productivity_manager = lazy_tools.productivity_manager
 
-from core.trigger_engine import TriggerEngine
+from kree.core.trigger_engine import TriggerEngine
 
 def get_base_dir():
     if getattr(sys, "frozen", False):
@@ -207,7 +207,7 @@ def _get_api_key() -> str:
     import os
     if "KREE_ACTIVE_API_KEY" in os.environ:
         return os.environ["KREE_ACTIVE_API_KEY"]
-    import core.vault as vault  # type: ignore[import]
+    import kree.core.vault as vault  # type: ignore[import]
 
     return vault.load_api_key(API_CONFIG_PATH)
 
@@ -228,8 +228,8 @@ def _load_system_prompt() -> str:
         base_text = PROMPT_PATH.read_text(encoding="utf-8")
         
         try:
-            import memory.history_manager as hist
-            import core.user_profile as up
+            import kree.memory.history_manager as hist
+            import kree.core.user_profile as up
             
             # Fetch Context
             history_summary = hist.get_memory_summary()
@@ -264,7 +264,7 @@ def _local_speech_voice(text: str) -> None:
             import subprocess
             import uuid
             
-            from memory.config_manager import load_audio_settings
+            from kree.memory.config_manager import load_audio_settings
             settings = load_audio_settings()
             gemini_voice = settings.get("kree_voice", "Kore")
             voice = {
@@ -617,9 +617,9 @@ class ContextTTSEngine:
         import time
         import os
         import subprocess
-        from memory.config_manager import load_audio_settings
+        from kree.memory.config_manager import load_audio_settings
         try:
-            from core.user_profile import get_user_profile
+            from kree.core.user_profile import get_user_profile
         except Exception:
             get_user_profile = None
         while self.running:
@@ -708,7 +708,7 @@ def _update_memory_async(user_text: str, jarvis_text: str) -> None:
     threading.Thread(target=worker, daemon=True).start()
 
 
-from core.tool_registry import TOOL_DECLARATIONS
+from kree.core.tool_registry import TOOL_DECLARATIONS
 class JarvisLive:
 
     # ── Sensitive tools that require PIN re-verification after session timeout ──
@@ -1231,7 +1231,7 @@ class JarvisLive:
             # Update intent
             if "update kree" in low:
                 logging.debug("[UI_TEXT] matched 'update'")
-                from core.updater import get_pending_update, install_pending_update
+                from kree.core.updater import get_pending_update, install_pending_update
                 pending = get_pending_update()
                 if pending.get("available"):
                     _local_speech_voice(f"Installing update version {pending['version']} now sir. Kree will restart.")
@@ -1641,7 +1641,7 @@ class JarvisLive:
             sys_prompt = time_ctx + sys_prompt
 
         try:
-            from memory.config_manager import load_audio_settings # type: ignore[import]
+            from kree.memory.config_manager import load_audio_settings # type: ignore[import]
             voice_name_config = load_audio_settings().get("kree_voice", "Kore")
         except Exception:
             voice_name_config = "Kore"
@@ -1670,7 +1670,7 @@ class JarvisLive:
         args = dict(fc.args or {})
 
         # Normalize common free-text fields to avoid Unicode drift between ASR, model, and tool layer.
-        import core.sanitizer as sanitizer
+        import kree.core.sanitizer as sanitizer
         for k in ("target", "query", "app", "app_name", "description", "task", "prompt", "text", "command"):
             if k in args and args[k] is not None:
                 val = self._normalize_text_input(args[k])
@@ -1788,8 +1788,8 @@ class JarvisLive:
         try:
             if name == "trigger_macro":
                 try:
-                    import core.automations as autos
-                    import core.execution_engine as engine
+                    import kree.core.automations as autos
+                    import kree.core.execution_engine as engine
                     chain_name = args.get("chain_name")
                     chain_tasks = autos.get_chain(chain_name)
                     if chain_tasks:
@@ -2009,7 +2009,7 @@ class JarvisLive:
                 goal         = args.get("goal", "")
                 priority_str = args.get("priority", "normal").lower()
 
-                from agent.task_queue import get_queue, TaskPriority  # type: ignore[import]
+                from kree.agent.task_queue import get_queue, TaskPriority  # type: ignore[import]
                 priority_map = {
                     "low":    TaskPriority.LOW,
                     "normal": TaskPriority.NORMAL,
@@ -2392,7 +2392,7 @@ class JarvisLive:
                                 ).start()
                                 
                                 try:
-                                    import memory.history_manager as hist
+                                    import kree.memory.history_manager as hist
                                     hist.save_turn(full_in, full_out, tools=turn_tools)
                                 except Exception as e:
                                     print(f"[JARVIS] ⚠️ History log error: {e}")
@@ -2570,7 +2570,7 @@ class JarvisLive:
             api_key=_get_api_key(),
             http_options={"api_version": "v1beta"}
         )
-        from memory.config_manager import load_audio_settings, load_telemetry_settings
+        from kree.memory.config_manager import load_audio_settings, load_telemetry_settings
         audio_settings = load_audio_settings()
         telemetry_settings = load_telemetry_settings()
 
@@ -2684,7 +2684,7 @@ class JarvisLive:
                 pass
 
         # Start Mobile Bridge natively in background
-        from mobile_bridge import KreeMobileBridge
+        from kree.mobile_bridge import KreeMobileBridge
         self.mobile_bridge = KreeMobileBridge(
             port=8443,
             on_command_callback=on_mobile_command,
@@ -2719,7 +2719,7 @@ class JarvisLive:
 
         # ── PWA Server Auto-Start ────────────────────────────────────────
         try:
-            from serve_pwa import start_pwa_server_background, get_pwa_url, get_server_status
+            from kree.serve_pwa import start_pwa_server_background, get_pwa_url, get_server_status
             pwa_url, pwa_error = start_pwa_server_background()
             if pwa_url:
                 self._trace(TelemetryEvents.SESSION_INIT, f"PWA server started: {pwa_url}")
@@ -2781,14 +2781,14 @@ class JarvisLive:
                     try:
                         if not getattr(self, "_checked_onboarding", False):
                             self._checked_onboarding = True
-                            import core.onboarding as onboard
+                            import kree.core.onboarding as onboard
                             if onboard.is_first_launch():
                                 # This will be handled inside the connect taskgroup later
                                 self._needs_onboarding = True
                     except Exception:
                         pass
             
-                from memory.config_manager import load_audio_settings
+                from kree.memory.config_manager import load_audio_settings
                 self._audio_settings = load_audio_settings()
                 intel_mode = self._audio_settings.get("intelligence_mode", "CLOUD_GEMINI")
 
@@ -2827,14 +2827,14 @@ class JarvisLive:
                     tg.create_task(self._proactive_check_loop())
                     
                     try:
-                        import core.app_watcher as aw
+                        import kree.core.app_watcher as aw
                         tg.create_task(aw.watch_processes(self.session))
                     except Exception as e:
                         print(f"[JARVIS] ⚠️ App Watcher fail: {e}")
                         
                     if getattr(self, "_needs_onboarding", False):
                         try:
-                            import core.onboarding as onboard
+                            import kree.core.onboarding as onboard
                             tg.create_task(onboard.first_time_setup(self.session))
                             self._needs_onboarding = False
                         except Exception as e:
@@ -2931,7 +2931,7 @@ class JarvisLive:
         Classic STT -> LLM -> TTS pipeline for Local Mode, bypassing Gemini Live WebRTC.
         """
         self._loop = asyncio.get_event_loop()
-        from core.llm_gateway import KreeIntelligenceEngine
+        from kree.core.llm_gateway import KreeIntelligenceEngine
 
         if sr is None:
             print("[JARVIS] SpeechRecognition is not installed. Local offline mode is unavailable.")
@@ -3036,7 +3036,7 @@ def main():
             
         # ── First Run Startup Prompt ──
         try:
-            from memory.config_manager import load_audio_settings, save_audio_settings
+            from kree.memory.config_manager import load_audio_settings, save_audio_settings
             import ctypes
             import winreg
             settings = load_audio_settings()
@@ -3058,11 +3058,11 @@ def main():
                 save_audio_settings(settings)
         except Exception: pass
         try:
-            from core.tray import SystemTrayApp
+            from kree.core.tray import SystemTrayApp
             
             def safe_shutdown():
                 print("[JARVIS] 🛑 Processing safe shutdown...")
-                from core.updater import run_installer_and_exit
+                from kree.core.updater import run_installer_and_exit
                 # Try to apply update. If none is ready, this returns False and we just exit normally.
                 if run_installer_and_exit():
                     return # Process is already exiting via os._exit(0) in the helper
@@ -3080,7 +3080,7 @@ def main():
 
         # 2. Boot OpenWakeWord Engine
         try:
-            from core.wakeword import WakeWordDetector
+            from kree.core.wakeword import WakeWordDetector
             wakeword = WakeWordDetector(on_wake_callback=kree.wake)
             wakeword.start()
             kree._wakeword_detector = wakeword
@@ -3090,14 +3090,14 @@ def main():
 
         # Boot analytics session
         try:
-            from core.analytics import track_session_start
+            from kree.core.analytics import track_session_start
             track_session_start()
         except Exception:
             pass
 
         # Boot auto-updater (background check + silent download)
         try:
-            from core.updater import check_update_background
+            from kree.core.updater import check_update_background
             # v1.0.1 Stable: Enabling auto_download by default
             check_update_background(ui=ui, speak_fn=_local_speech_voice, auto_download=True)
         except Exception:
@@ -3112,19 +3112,19 @@ def main():
             error_details = traceback.format_exc()
             print(f"[KREE CRASH] {e}\n{error_details}")
             try:
-                from core.analytics import track_error
+                from kree.core.analytics import track_error
                 track_error("crash", str(e))
             except Exception:
                 pass
             try:
-                from core.backend import log_crash
+                from kree.core.backend import log_crash
                 log_crash(str(e), error_details)
             except Exception:
                 pass
             raise
         finally:
             try:
-                from core.analytics import shutdown
+                from kree.core.analytics import shutdown
                 shutdown()
             except Exception:
                 pass

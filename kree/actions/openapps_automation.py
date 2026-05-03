@@ -17,7 +17,7 @@ import webbrowser
 from pathlib import Path
 from typing import Any
 
-from actions.open_app import open_app  # type: ignore[import]
+from kree.actions.open_app import open_app  # type: ignore[import]
 
 try:
     import psutil  # type: ignore[import]

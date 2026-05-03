@@ -11,7 +11,7 @@ the best loading strategy from:
 
 Usage
 -----
-    from core.helpers.cpu_ram_optimizer import auto_select_strategy, apply_strategy
+    from kree.core.helpers.cpu_ram_optimizer import auto_select_strategy, apply_strategy
 
     strategy = auto_select_strategy()
     model = apply_strategy(strategy, model_or_path)
@@ -156,7 +156,7 @@ def apply_strategy(strategy: Strategy, model_or_path: Any) -> Any:
     name = strategy.name
 
     if name == "mmap":
-        from core.helpers.mmap_loader import mmap_load_weights
+        from kree.core.helpers.mmap_loader import mmap_load_weights
         if isinstance(model_or_path, str):
             handle = mmap_load_weights(model_or_path)
             print(f"[KREE-OPT] mmap active — file={handle['path']}, size={handle['size'] / 1e6:.1f} MB")
@@ -165,14 +165,14 @@ def apply_strategy(strategy: Strategy, model_or_path: Any) -> Any:
         return model_or_path
 
     if name == "deepspeed":
-        from core.helpers.deepspeed_zero import init_deepspeed_model
+        from kree.core.helpers.deepspeed_zero import init_deepspeed_model
         return init_deepspeed_model(
             model_or_path,
             offload_device=strategy.params.get("offload_device", "cpu"),
         )
 
     if name == "onnx":
-        from core.helpers.onnx_runner import _get_ort_session
+        from kree.core.helpers.onnx_runner import _get_ort_session
         if isinstance(model_or_path, (str, os.PathLike)):
             return _get_ort_session(
                 model_or_path,

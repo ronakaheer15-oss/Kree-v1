@@ -30,7 +30,7 @@ def load_memory() -> dict:
 
     with _lock:
         try:
-            import core.vault as vault # type: ignore[import]
+            import kree.core.vault as vault # type: ignore[import]
             raw_data = MEMORY_PATH.read_bytes()
             decrypted_json = vault.decrypt_data(raw_data)
             data = json.loads(decrypted_json)
@@ -49,7 +49,7 @@ def save_memory(memory: dict) -> None:
     MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     with _lock:
-        import core.vault as vault # type: ignore[import]
+        import kree.core.vault as vault # type: ignore[import]
         json_str = json.dumps(memory, indent=2, ensure_ascii=False)
         encrypted_bytes = vault.encrypt_data(json_str)
         MEMORY_PATH.write_bytes(encrypted_bytes)
@@ -59,7 +59,7 @@ def _truncate_value(val: str) -> str:
         val = str(val)
     
     # Aegis Security: Scrub PII before saving to disk
-    import core.security as security # type: ignore[import]
+    import kree.core.security as security # type: ignore[import]
     val = security.scrub_pii(val)
 
     if len(val) > MAX_VALUE_LENGTH:
