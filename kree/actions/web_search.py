@@ -13,7 +13,7 @@ import warnings
 from pathlib import Path
 from typing import Any
 
-from core import vault
+from kree.core import vault
 
 
 from kree._paths import PROJECT_ROOT
