@@ -16,12 +16,9 @@ Tables required in Supabase:
   - releases (version text, download_url text, release_notes text, created_at timestamp, is_stable boolean)
 """
 
-import os
-import sys
 import json
 import platform
 import threading
-from pathlib import Path
 
 # ── Resolve paths ─────────────────────────────────────────────────────────────
 from kree._paths import PROJECT_ROOT

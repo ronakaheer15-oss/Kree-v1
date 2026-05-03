@@ -1,6 +1,5 @@
 """Integration test: mobile WebSocket bridge connect/send/receive."""
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 @pytest.mark.integration

@@ -26,7 +26,6 @@ _APP_ALIASES = {
     "notepad++":          {"Windows": "notepad++",              "Darwin": "TextEdit",            "Linux": "gedit"},
     "vscode":             {"Windows": "code",                   "Darwin": "Visual Studio Code",  "Linux": "code"},
     "spotify":            {"Windows": "Spotify",                "Darwin": "Spotify",             "Linux": "spotify"},
-    "vscode":             {"Windows": "code",                   "Darwin": "Visual Studio Code",  "Linux": "code"},
     "visual studio code": {"Windows": "code",                   "Darwin": "Visual Studio Code",  "Linux": "code"},
     "discord":            {"Windows": "Discord",                "Darwin": "Discord",             "Linux": "discord"},
     "telegram":           {"Windows": "Telegram",               "Darwin": "Telegram",            "Linux": "telegram"},

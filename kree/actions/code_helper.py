@@ -80,7 +80,7 @@ def _read_file(file_path: str) -> tuple[str, str]:
     # Aegis Security: Prevent Kree from reading unauthorized sensitive system files
     import kree.core.security as security # type: ignore[import]
     if not security.is_path_safe(p):
-        return "", f"Access Denied: Path is outside the Kree Sandbox."
+        return "", "Access Denied: Path is outside the Kree Sandbox."
         
     if not p.exists():
         return "", f"File not found: {file_path}"
@@ -473,7 +473,7 @@ def _screen_debug_action(description, file_path, player, speak=None) -> str:
         client = genai.Client(api_key=_get_api_key()) # type: ignore
 
         image_bytes  = screenshot_path.read_bytes()
-        image_base64 = _image_to_base64(screenshot_path)
+        _image_to_base64(screenshot_path)
 
         user_question = description or "What error or problem do you see on the screen? How can it be fixed?"
 
@@ -504,7 +504,7 @@ Be specific and actionable. If you see an error message, quote it exactly."""
         )
 
         analysis = response.text.strip()
-        print(f"[Code] ✅ Screen analysis complete")
+        print("[Code] ✅ Screen analysis complete")
 
         try:
             screenshot_path.unlink()

@@ -4,7 +4,6 @@ Determines the capability of the local machine to recommend or restrict AI model
 """
 import psutil
 import subprocess
-import os
 
 def get_vram_gb():
     """Attempt to get dedicated VRAM in GB using WMI."""

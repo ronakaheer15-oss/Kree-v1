@@ -1,12 +1,10 @@
-import os
 import json
 import base64
 import uuid
 from datetime import datetime
 import hashlib
-from pathlib import Path
 from cryptography.fernet import Fernet
-from typing import Dict, Any, Optional
+from typing import Optional
 from kree._paths import PROJECT_ROOT
 
 BASE_DIR = PROJECT_ROOT
@@ -102,7 +100,7 @@ class AuthManager:
             return {"ok": False, "message": "Invalid password."}
             
         safe_user = {k: v for k,v in target_user.items() if not k.endswith('_hash') and not k.startswith('encrypted_')}
-        is_first = target_user.get("is_first_login", False)
+        target_user.get("is_first_login", False)
         
         # Check what needs to be configured still
         if not target_user.get("pin_hash"):

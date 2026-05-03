@@ -10,7 +10,6 @@
 
 import time
 import subprocess
-import sys
 import platform
 from pathlib import Path
 

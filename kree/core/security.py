@@ -1,7 +1,5 @@
 import re
 from pathlib import Path
-import os
-import sys
 
 # DESTRUCTIVE COMMANDS that require EXPLICIT User Confirmation
 DESTRUCTIVE_PATTERNS = [

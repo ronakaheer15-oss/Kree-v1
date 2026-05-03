@@ -1,8 +1,6 @@
-import os
 import json
 import time
 import threading
-from pathlib import Path
 from datetime import datetime
 from kree._paths import PROJECT_ROOT
 

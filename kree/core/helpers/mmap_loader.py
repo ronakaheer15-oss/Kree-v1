@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import mmap
 import os
-import struct
 from pathlib import Path
 from typing import Any
 

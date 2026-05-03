@@ -1,7 +1,4 @@
 import json
-import os
-import sys
-from pathlib import Path
 
 from kree._paths import PROJECT_ROOT
 BASE_DIR = PROJECT_ROOT

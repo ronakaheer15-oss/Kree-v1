@@ -9,13 +9,11 @@ Anonymous, opt-in usage analytics via PostHog.
 - Gracefully no-ops if key is missing or user opted out
 """
 
-import os
 import sys
 import json
 import uuid
 import platform
 import threading
-from pathlib import Path
 
 # ── Resolve paths ─────────────────────────────────────────────────────────────
 from kree._paths import PROJECT_ROOT

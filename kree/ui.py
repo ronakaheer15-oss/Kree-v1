@@ -2,7 +2,14 @@
 Kree Dashboard UI — pywebview-based (v3, stable)
 """
 
-import os, sys, json, time, threading, psutil, ctypes, platform  # type: ignore[import]
+import os
+import sys
+import json
+import time
+import threading
+import psutil
+import ctypes
+import platform  # type: ignore[import]
 from pathlib import Path
 from ctypes import wintypes
 
@@ -829,7 +836,8 @@ class _DashboardAPI:
                 self._owner._on_api_setup_complete()
             self._owner._auth_injected = True
             
-            import os, json
+            import os
+            import json
             auth_ok_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory", "session_auth.json")
             try:
                 os.makedirs(os.path.dirname(auth_ok_file), exist_ok=True)
@@ -850,10 +858,10 @@ class _DashboardAPI:
             import time as _time
             # Walk up to find the JarvisLive instance that has the timer
             try:
-                from main import JarvisLive
                 # The owner is KreeUI, which doesn't have the timer.
                 # We write a flag file that JarvisLive polls.
-                import os, json
+                import os
+                import json
                 flag_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory", "session_pin_ok.json")
                 os.makedirs(os.path.dirname(flag_file), exist_ok=True)
                 with open(flag_file, 'w') as f:
@@ -892,7 +900,7 @@ class _DashboardAPI:
   document.getElementById('challenge-pin').addEventListener('keydown', function(e){ if(e.key==='Enter') document.getElementById('challenge-btn').click(); });
   setTimeout(function(){ document.getElementById('challenge-pin').focus(); }, 100);
 })();
-""";
+"""
         try:
             self._owner._main_win.evaluate_js(js)
         except Exception:
@@ -1033,7 +1041,6 @@ class _DashboardAPI:
             import ctypes
             CF_UNICODETEXT = 13
             user32 = ctypes.windll.user32
-            kernel32 = ctypes.windll.kernel32
             user32.OpenClipboard(0)
             try:
                 if user32.IsClipboardFormatAvailable(CF_UNICODETEXT):
@@ -1071,7 +1078,8 @@ class _DashboardAPI:
     def save_bridge_file(self, filename, data_b64):
         """Save a file received from mobile to Desktop/Kree Bridge folder."""
         try:
-            import os, base64
+            import os
+            import base64
             desktop_dir = os.path.join(os.path.expanduser("~"), "Desktop", "Kree Bridge")
             os.makedirs(desktop_dir, exist_ok=True)
             fpath = os.path.join(desktop_dir, filename)
@@ -1102,7 +1110,6 @@ class _DashboardAPI:
             import asyncio
             import os
             import base64
-            from kree.mobile_bridge import KreeMobileBridge
             
             def transmission_worker(file_paths):
                 if not getattr(self._owner, 'mobile_bridge', None): return
@@ -1206,7 +1213,6 @@ class _DashboardAPI:
                         import os
                         import zipfile
                         import tempfile
-                        import time
                         
                         folder_name = os.path.basename(folder_path.rstrip('/\\'))
                         if not folder_name: folder_name = "Folder"
@@ -1250,7 +1256,7 @@ class _DashboardAPI:
         """Generate a new auth token, invalidating all connected devices."""
         try:
             from kree.serve_pwa import reset_token, get_pwa_url
-            new_token = reset_token()
+            reset_token()
             new_url = get_pwa_url()
             # Push new QR to UI
             try:
@@ -1319,7 +1325,6 @@ class _DashboardAPI:
     def mute_desktop(self):
         """Toggle system mute."""
         try:
-            import ctypes
             from ctypes import cast, POINTER
             from comtypes import CLSCTX_ALL
             try:
@@ -1342,7 +1347,6 @@ class _DashboardAPI:
         """Take a screenshot and save to Desktop."""
         try:
             import mss
-            from PIL import Image
             import os
             from datetime import datetime
             desktop = os.path.join(os.path.expanduser("~"), "Desktop")
@@ -1505,11 +1509,11 @@ class _DashboardAPI:
         if text:
             # Gracefully wait if the backend hasn't bound the callback yet
             if not getattr(self._owner, 'on_user_text', None):
-                print(f"[UI] Backend not ready yet, queuing or dropping text command.")
+                print("[UI] Backend not ready yet, queuing or dropping text command.")
                 return "backend_not_ready"
                 
             # Removed optimistic UI write_log to avoid duplicate transcripts
-            print(f"[UI] Found callback, starting thread...")
+            print("[UI] Found callback, starting thread...")
             threading.Thread(target=self._owner.on_user_text,
                              args=(text,), daemon=True).start()
         return "ok"
@@ -2139,7 +2143,7 @@ class KreeUI:
                             self.chat_history.append({"role": "USER", "body": turn["user"]})
                         if turn.get("kree"):
                             self.chat_history.append({"role": "KREE", "body": turn["kree"]})
-            except Exception as e:
+            except Exception:
                 pass
 
             hist_raw = [{"r": m["role"], "b": m["body"]} for m in self.chat_history]

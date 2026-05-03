@@ -10,7 +10,6 @@ import sys
 import json
 import threading
 import secrets
-from pathlib import Path
 from kree.core.runtime import BUNDLE_DIR, CONFIG_DIR as RUNTIME_CONFIG_DIR
 
 BASE_DIR = BUNDLE_DIR
@@ -189,10 +188,10 @@ if __name__ == "__main__":
     print()
     print("   HOW TO CONNECT YOUR PHONE:")
     print("   ─────────────────────────────────────────")
-    print(f"   1. On your phone, open the browser")
-    print(f"   2. Type this URL or scan the QR code in Kree")
-    print(f"   3. Tap Share → 'Add to Home Screen'")
-    print(f"   4. Open the Kree app from your home screen!")
+    print("   1. On your phone, open the browser")
+    print("   2. Type this URL or scan the QR code in Kree")
+    print("   3. Tap Share → 'Add to Home Screen'")
+    print("   4. Open the Kree app from your home screen!")
     print()
     print("   Make sure your phone is on the SAME WiFi!")
     print("=" * 52)

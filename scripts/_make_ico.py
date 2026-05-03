@@ -36,10 +36,10 @@ print(f"[3/5] PWA 512 created: {os.path.getsize(pwa_512):,} bytes")
 dl = os.path.join(ROOT, "DOWNLOAD_ME")
 os.makedirs(dl, exist_ok=True)
 img.resize((1024, 1024), Image.LANCZOS).save(os.path.join(dl, "kree-logo.png"), format='PNG')
-print(f"[4/5] Logo saved to DOWNLOAD_ME/kree-logo.png")
+print("[4/5] Logo saved to DOWNLOAD_ME/kree-logo.png")
 
 shutil.copy2(BANNER_SRC, os.path.join(dl, "kree-banner.png"))
-print(f"[5/5] Banner saved to DOWNLOAD_ME/kree-banner.png")
+print("[5/5] Banner saved to DOWNLOAD_ME/kree-banner.png")
 
 print()
 print("ALL DONE! Both PWA and EXE now use the same icon.")

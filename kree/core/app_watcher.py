@@ -1,5 +1,4 @@
 import asyncio
-import time
 import psutil
 
 async def watch_processes(live_session=None):
@@ -55,7 +54,7 @@ async def watch_processes(live_session=None):
                         await live_session.send(
                             input=f"[SYSTEM OVERRIDE] The user just manually opened {app_name}. Say the following line naturally out loud: '{trigger_speech}'"
                         )
-                    except Exception as e:
+                    except Exception:
                         pass
-        except Exception as e:
+        except Exception:
             pass

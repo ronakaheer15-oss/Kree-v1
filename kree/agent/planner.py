@@ -1,7 +1,5 @@
 import json
 import re
-import sys
-from pathlib import Path
 
 
 from kree._paths import PROJECT_ROOT

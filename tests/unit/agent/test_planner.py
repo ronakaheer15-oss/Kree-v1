@@ -1,6 +1,5 @@
 import json
 from unittest.mock import MagicMock, patch
-import pytest
 from kree.agent.planner import create_plan, _fallback_plan
 
 

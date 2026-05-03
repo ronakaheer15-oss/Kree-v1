@@ -1,7 +1,6 @@
 import ctypes
 from ctypes import wintypes
 import sys
-import time
 
 def prompt_windows_hello(message: str = "Aegis Face ID Verification Required.") -> bool:
     """Invokes the native Windows Hello (Face ID / PIN) security prompt."""

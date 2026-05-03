@@ -1,6 +1,5 @@
 import subprocess
 import os
-import sys
 
 def run_cmd(cmd, cwd=None):
     print(f"Running: {' '.join(cmd)}")

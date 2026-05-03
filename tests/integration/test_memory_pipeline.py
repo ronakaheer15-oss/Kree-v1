@@ -1,8 +1,6 @@
 """Integration test: memory read/write cycle through the full memory stack."""
-import json
 import pytest
 from unittest.mock import patch
-from pathlib import Path
 
 
 @pytest.fixture()

@@ -214,7 +214,7 @@ class KreeMobileBridge:
                 header = await reader.readexactly(2)
                 b1, b2 = header
                 
-                fin = b1 & 0x80
+                b1 & 0x80
                 opcode = b1 & 0x0f
                 is_masked = b2 & 0x80
                 payload_len = b2 & 0x7f

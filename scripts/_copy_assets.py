@@ -1,5 +1,6 @@
 """Quick script to copy logo + banner to DOWNLOAD_ME folder."""
-import os, shutil
+import os
+import shutil
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(ROOT, "DOWNLOAD_ME")
