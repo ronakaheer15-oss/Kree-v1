@@ -1,7 +1,5 @@
 import json
 from threading import Lock
-from pathlib import Path
-import sys
 
 
 from kree._paths import PROJECT_ROOT
@@ -149,7 +147,7 @@ def format_memory_for_prompt(memory: dict | None) -> str:
     if not lines:
         return ""
 
-    result = "[USER MEMORY]\n" + "\n".join(f"- {l}" for l in lines)
+    result = "[USER MEMORY]\n" + "\n".join(f"- {line}" for line in lines)
     if len(result) > 800:
         result = result[:797] + "…" # type: ignore
 

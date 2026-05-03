@@ -13,15 +13,12 @@ import base64
 import io
 import json
 import re
-import os
-import sys
 import time
 import threading
 import cv2
 import mss
 import mss.tools
 import pyaudio
-from pathlib import Path
 
 from core import vault
 
@@ -380,7 +377,8 @@ def screen_process(
             mime_type   = "image/jpeg" if _PIL_OK else "image/png"
             print("[ScreenProcess] 🖥️ Screen captured")
     except Exception as e:
-        import traceback; traceback.print_exc()
+        import traceback
+        traceback.print_exc()
         print(f"[ScreenProcess] ❌ Capture error: {e}")
         return False
 

@@ -119,7 +119,7 @@ def _inject_context(params: dict, tool: str, step_results: dict, goal: str = "")
                 combined = "\n\n---\n\n".join(all_results)
                 translated = _translate_to_goal_language(combined, goal)
                 params["content"] = translated
-                print(f"[Executor] 💉 Injected + translated content")
+                print("[Executor] 💉 Injected + translated content")
 
     return params
 def _detect_language(text: str) -> str:
@@ -313,7 +313,8 @@ class AgentExecutor:
 
                         if decision == ErrorDecision.RETRY:
                             attempt += 1
-                            import time; time.sleep(2)
+                            import time
+                            time.sleep(2)
                             continue
 
                         elif decision == ErrorDecision.SKIP:

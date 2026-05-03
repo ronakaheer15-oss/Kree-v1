@@ -22,3 +22,12 @@ markers = [
     "integration: integration tests that wire real modules together",
 ]
 addopts = "-m 'not e2e' -v"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+# Ignore pre-existing style patterns throughout the codebase that would require
+# touching every file: inline if/return (E701), conditional top-level imports
+# (E402), re-exports and optional-dep guards (F811), bare except clauses (E722).
+extend-ignore = ["E701", "E702", "E402", "F811", "E722"]

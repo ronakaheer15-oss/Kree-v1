@@ -9,9 +9,7 @@
 
 import json
 import re
-import sys
 import time
-import threading
 from pathlib import Path
 
 import pyautogui
@@ -21,7 +19,7 @@ from PIL import ImageGrab
 
 try:
     import requests
-    from bs4 import BeautifulSoup
+    from bs4 import BeautifulSoup  # noqa: F401
     _REQUESTS_OK = True
 except ImportError:
     _REQUESTS_OK = False

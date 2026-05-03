@@ -63,7 +63,6 @@ def _kree_crash_handler(exc_type, exc_value, exc_tb):
 _sys.excepthook = _kree_crash_handler
 
 import asyncio
-import collections
 import random
 import threading
 import json
@@ -76,8 +75,6 @@ import traceback
 import functools
 import base64
 import unicodedata
-import subprocess
-import platform
 from pathlib import Path
 from typing import Any, Optional
 
@@ -95,13 +92,11 @@ except ImportError:
     sr = None  # type: ignore[assignment]
 
 import time
-import wave
 from kree.ui import JarvisUI  # type: ignore[import]
-from kree.memory.memory_manager import load_memory, update_memory, format_memory_for_prompt  # type: ignore[import]
+from kree.memory.memory_manager import load_memory, format_memory_for_prompt  # type: ignore[import]
 from kree.memory.config_manager import load_audio_settings, load_telemetry_settings  # type: ignore[import]
 from kree.core.telemetry import TelemetryEvents, TelemetryLogger, export_session_trace, load_session_events  # type: ignore[import]
 
-from kree.agent.task_queue import get_queue  # type: ignore[import]
 
 
 class LazyToolLoader:
@@ -261,7 +256,6 @@ def _local_speech_voice(text: str) -> None:
     def speak():
         try:
             import os
-            import subprocess
             import uuid
             
             from kree.memory.config_manager import load_audio_settings
@@ -419,7 +413,7 @@ def _build_contextual_greeting(name: str = "sir") -> str:
     # Priority 1: Critical System Status
     if activity_context == "low_battery":
         return random.choice([
-            f"Sir, battery is extremely low. You might want to plug in.",
+            "Sir, battery is extremely low. You might want to plug in.",
             f"Battery critical, {name}. Please connect power.",
             f"We're running on fumes here, {name}. Plug in soon.",
             f"{name}, battery's about to die. Better save your work.",
@@ -472,8 +466,8 @@ def _build_contextual_greeting(name: str = "sir") -> str:
     elif activity_context == "music":
         return random.choice([
             f"{name}?",
-            f"Yes?",
-            f"I'm here.",
+            "Yes?",
+            "I'm here.",
             f"Enjoying the tunes, {name}?",
             f"Good playlist. What do you need, {name}?",
             f"I'm listening too, {name}. Well, sort of.",
@@ -509,7 +503,7 @@ def _build_contextual_greeting(name: str = "sir") -> str:
         return _pick_unique("mon_morning", [
             f"Monday morning, {name}. Ready to conquer the week?",
             f"Welcome to a new week, {name}.",
-            f"Monday morning, let's get started.",
+            "Monday morning, let's get started.",
             f"New week, new goals. What's the plan, {name}?",
             f"Rise and grind, {name}. It's Monday."
         ])
@@ -546,7 +540,7 @@ def _build_contextual_greeting(name: str = "sir") -> str:
         return _pick_unique("morning", [
             f"Good morning, {name}.",
             f"Morning, {name}. Ready to start?",
-            f"Good morning. What's the plan for today?",
+            "Good morning. What's the plan for today?",
             f"Top of the morning, {name}. What do you need?",
             f"Rise and shine, {name}.",
             f"Fresh day ahead, {name}. What's first?",
@@ -615,8 +609,6 @@ class ContextTTSEngine:
 
     def _loop(self):
         import time
-        import os
-        import subprocess
         from kree.memory.config_manager import load_audio_settings
         try:
             from kree.core.user_profile import get_user_profile
@@ -1760,8 +1752,8 @@ class JarvisLive:
 
                 if not self._session_pin_verified:
                     msg = (
-                        f"Session verification timed out. "
-                        f"Please verify your PIN and try again."
+                        "Session verification timed out. "
+                        "Please verify your PIN and try again."
                     )
                     return types.FunctionResponse(
                         id=fc.id,
@@ -2219,7 +2211,7 @@ class JarvisLive:
                         cap = None
                         if self.ui._main_win:
                             try:
-                                self.ui._eval(f"if(typeof updateWebcam==='function') updateWebcam('');")
+                                self.ui._eval("if(typeof updateWebcam==='function') updateWebcam('');")
                             except Exception:
                                 pass
                     await asyncio.sleep(0.5)
@@ -2545,9 +2537,8 @@ class JarvisLive:
 
             if proactive_timeout > 0 and dormant_time > proactive_timeout:
                 if dormant_time > AUTO_SLEEP_TIMEOUT and self.wake_event.is_set():
-                    print(f"[JARVIS] ⏱️ Inactive for 5 mins. Auto-sleeping.")
+                    print("[JARVIS] ⏱️ Inactive for 5 mins. Auto-sleeping.")
                     try:
-                        import pyttsx3
                         _local_speech_voice("Going to sleep sir, call me when you need me.")
                     except: pass
                     self.hibernate()
@@ -2571,7 +2562,7 @@ class JarvisLive:
             http_options={"api_version": "v1beta"}
         )
         from kree.memory.config_manager import load_audio_settings, load_telemetry_settings
-        audio_settings = load_audio_settings()
+        load_audio_settings()
         telemetry_settings = load_telemetry_settings()
 
 
@@ -2719,7 +2710,7 @@ class JarvisLive:
 
         # ── PWA Server Auto-Start ────────────────────────────────────────
         try:
-            from kree.serve_pwa import start_pwa_server_background, get_pwa_url, get_server_status
+            from kree.serve_pwa import start_pwa_server_background
             pwa_url, pwa_error = start_pwa_server_background()
             if pwa_url:
                 self._trace(TelemetryEvents.SESSION_INIT, f"PWA server started: {pwa_url}")
