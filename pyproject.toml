@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "kree"
+version = "1.0.0"
+description = "Voice-controlled AI desktop assistant for Windows"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["kree*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "e2e: end-to-end tests that launch a real app window (run with: pytest -m e2e)",
+    "integration: integration tests that wire real modules together",
+]
+addopts = "-m 'not e2e' -v"

@@ -88,3 +88,32 @@ Mark-XXX-main/
 ├── installer/           # Windows installer scripts (Inno Setup)
 └── requirements.txt     # Python dependencies
 ```
+
+## Tech Stack
+
+| Component | Technology |
+|---|---|
+| **Language** | Python 3.10+ |
+| **Intelligence** | Google Gemini 2.0/2.5 Live, Ollama (Local LLMs) |
+| **Interface** | pywebview (Desktop Dashboard), HTML/JS (Mobile PWA) |
+| **Voice (STT)** | Vosk (Offline), Google Multimodal Live (Cloud) |
+| **Voice (TTS)** | Edge TTS (Neural Neural Voices), fallback Local Speech |
+| **Wake Word** | OpenWakeWord (ONNX), Resemblyzer (Voice Fingerprinting) |
+| **Automation** | Playwright (Web), PyAutoGUI (Desktop), Custom OS Hooks |
+| **Connectivity** | WebSockets (Mobile Bridge), PWA Server |
+
+## Current Capabilities
+
+- **Voice Interaction**: Wake Kree with "Hey Kree" or "Hey Jarvis". Supports whisper mode and voice fingerprinting.
+- **Multimodal Vision**: Kree can "see" your screen or camera to answer questions about what you're doing.
+- **Web Automation**: Navigate sites, search the web, and fill forms using the `kree_web` (browser_control) module.
+- **File Management**: Organize your desktop, search for files, and manage directories via `kree_files` (file_controller).
+- **System Control**: Adjust settings, open apps, and monitor system performance (CPU/RAM).
+- **Long-Term Memory**: Kree remembers your name, preferences, and past interactions across sessions.
+- **Mobile Bridge**: Control your PC from your phone using voice or text commands.
+
+## Documentation Links
+
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md) — Deep dive into how Kree works.
+- [ROADMAP.md](docs/ROADMAP.md) — Future versions and planned features.
+- [CONTRIBUTING.md](docs/CONTRIBUTING.md) — Guidelines for developers.

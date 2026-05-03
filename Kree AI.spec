@@ -17,20 +17,6 @@ from pathlib import Path
 
 ROOT = Path(os.environ.get('KREE_ROOT') or Path.cwd()).resolve()
 
-
-def _first_existing(*candidates: Path) -> Path:
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return candidates[0]
-
-
-STITCH_ROOT = _first_existing(
-    ROOT / 'stitch_core_system_dashboard',
-    ROOT.parent / 'stitch_core_system_dashboard',
-    ROOT.parent / '_Related_Projects' / 'stitch_core_system_dashboard_KREE_DESKTOP',
-)
-
 # ── Only bundle .onnx models from openwakeword (skip .tflite duplicates) ─────
 OWW_RESOURCES = ROOT.parent / '.venv' / 'Lib' / 'site-packages' / 'openwakeword' / 'resources'
 
@@ -40,51 +26,46 @@ a = Analysis(
     binaries=[],
     datas=[
         (str(ROOT / 'config'), 'config'),
-        (str(ROOT / 'core'), 'core'),
-        (str(ROOT / 'actions'), 'actions'),
-        (str(ROOT / 'memory'), 'memory'),
-        (str(ROOT / 'agent'), 'agent'),
         (str(ROOT / 'pwa'), 'pwa'),
         (str(ROOT / 'assets'), 'assets'),
-        (str(ROOT / 'README-INSTALL.txt'), '.'),
-        (str(STITCH_ROOT), 'stitch_core_system_dashboard'),
-        # Bundle openwakeword resources (models + configs)
+        # openwakeword models (ONNX only)
         (str(OWW_RESOURCES), 'openwakeword/resources'),
     ],
     hiddenimports=[
-        # ── Kree Action Modules (lazy-loaded via LazyToolLoader) ──────────
-        'actions.flight_finder',
-        'actions.open_app',
-        'actions.downloader_updater',
-        'actions.turboquant_helper',
-        'actions.openapps_automation',
-        'actions.weather_report',
-        'actions.send_message',
-        'actions.reminder',
-        'actions.computer_settings',
-        'actions.screen_processor',
-        'actions.youtube_video',
-        'actions.cmd_control',
-        'actions.desktop',              # ← FIXED: was desktop_control
-        'actions.browser_control',
-        'actions.file_controller',
-        'actions.code_helper',
-        'actions.dev_agent',
-        'actions.web_search',
-        'actions.computer_control',
-        'actions.email_calendar',
+        # ── Kree Action Modules ───────────────────────────────────────────
+        'kree.actions.flight_finder',
+        'kree.actions.open_app',
+        'kree.actions.downloader_updater',
+        'kree.actions.turboquant_helper',
+        'kree.actions.openapps_automation',
+        'kree.actions.weather_report',
+        'kree.actions.send_message',
+        'kree.actions.reminder',
+        'kree.actions.computer_settings',
+        'kree.actions.screen_processor',
+        'kree.actions.youtube_video',
+        'kree.actions.cmd_control',
+        'kree.actions.desktop',
+        'kree.actions.browser_control',
+        'kree.actions.file_controller',
+        'kree.actions.code_helper',
+        'kree.actions.dev_agent',
+        'kree.actions.web_search',
+        'kree.actions.computer_control',
+        'kree.actions.email_calendar',
 
-        # ── Core modules ─────────────────────────────────────────────────
-        'core.runtime',
-        'core.wakeword',
-        'core.telemetry',
-        'core.version',
-        'core.auth_manager',
-        'core.auth_ui',
-        'core.security_ui',
-        'core.update_service',
-        'core.api_setup_ui',
-        'core.tool_registry',
+        # ── Core modules ──────────────────────────────────────────────────
+        'kree.core.runtime',
+        'kree.core.wakeword',
+        'kree.core.telemetry',
+        'kree.core.version',
+        'kree.core.auth_manager',
+        'kree.core.auth_ui',
+        'kree.core.security_ui',
+        'kree.core.update_service',
+        'kree.core.api_setup_ui',
+        'kree.core.tool_registry',
+        'kree._paths',
 
         # ── Google AI SDKs ───────────────────────────────────────────────
         'google.genai',
