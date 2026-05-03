@@ -44,12 +44,8 @@ def _ensure_genai_sdk():
         _GENAI_SDK = (_genai, _types)
     return _GENAI_SDK
 
-def get_base_dir():
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent
-    return Path(__file__).resolve().parent.parent
-
-BASE_DIR        = get_base_dir()
+from kree._paths import PROJECT_ROOT
+BASE_DIR = PROJECT_ROOT
 API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
 
 LIVE_MODEL          = "models/gemini-2.5-flash-native-audio-preview-12-2025"

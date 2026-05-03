@@ -18,12 +18,8 @@ from pathlib import Path
 from datetime import datetime
 
 
-def get_base_dir():
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent
-    return Path(__file__).resolve().parent.parent
-
-BASE_DIR        = get_base_dir()
+from kree._paths import PROJECT_ROOT
+BASE_DIR = PROJECT_ROOT
 API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
 
 

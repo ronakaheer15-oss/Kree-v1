@@ -23,26 +23,21 @@ from pathlib import Path
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 import sys as _sys
+from kree.core.runtime import BUNDLE_DIR
+from kree._paths import PROJECT_ROOT
 
-def _get_base_dir():
-    """Return the project root — works in both dev and frozen mode."""
-    if getattr(_sys, "frozen", False) and hasattr(_sys, "_MEIPASS"):
-        return Path(_sys._MEIPASS)
-    return Path(__file__).resolve().parent.parent
-
-BASE_DIR = _get_base_dir()
-VOICEPRINT_DIR = BASE_DIR / "assets" / "voiceprint"
+VOICEPRINT_DIR = BUNDLE_DIR / "assets" / "voiceprint"
 VOICEPRINT_FILE = VOICEPRINT_DIR / "owner.npy"
 
 # ── Custom Model Path ────────────────────────────────────────────────────────
-CUSTOM_ONNX_PATH = BASE_DIR / "assets" / "models" / "hey_kree.onnx"
+CUSTOM_ONNX_PATH = BUNDLE_DIR / "assets" / "models" / "hey_kree.onnx"
 
 # In frozen mode, openwakeword resources are bundled at _MEIPASS/openwakeword/resources
 # In dev mode, they're in the .venv site-packages
 if getattr(_sys, "frozen", False):
-    VENV_MODEL_DIR = BASE_DIR / "openwakeword" / "resources" / "models"
+    VENV_MODEL_DIR = BUNDLE_DIR / "openwakeword" / "resources" / "models"
 else:
-    VENV_MODEL_DIR = BASE_DIR.parent / ".venv" / "Lib" / "site-packages" / "openwakeword" / "resources" / "models"
+    VENV_MODEL_DIR = PROJECT_ROOT.parent / ".venv" / "Lib" / "site-packages" / "openwakeword" / "resources" / "models"
 
 DEFAULT_WAKEWORD_MODELS = (
     "hey_jarvis",

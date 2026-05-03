@@ -11,24 +11,10 @@ import json
 import threading
 import secrets
 from pathlib import Path
+from kree.core.runtime import BUNDLE_DIR, CONFIG_DIR as RUNTIME_CONFIG_DIR
 
-
-def _get_base_dir():
-    """Resolve base directory for both frozen (exe) and dev environments."""
-    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
-        return Path(sys._MEIPASS)
-    return Path(__file__).resolve().parent
-
-
-def _get_config_dir():
-    """Config always lives next to the exe, not in _MEIPASS temp."""
-    if getattr(sys, 'frozen', False):
-        return Path(sys.executable).parent / 'config'
-    return Path(__file__).resolve().parent / 'config'
-
-
-BASE_DIR = _get_base_dir()
-CONFIG_DIR = _get_config_dir()
+BASE_DIR = BUNDLE_DIR
+CONFIG_DIR = RUNTIME_CONFIG_DIR
 PWA_DIR = BASE_DIR / "pwa"
 TOKEN_FILE = CONFIG_DIR / "pwa_token.json"
 

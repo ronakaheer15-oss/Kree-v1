@@ -26,7 +26,7 @@ def _get_bundle_dir() -> Path:
     openwakeword models, stitch dashboard HTML, etc.).
 
     - Frozen: sys._MEIPASS  (PyInstaller's temp extraction folder)
-    - Dev:    project root   (parent of this file's directory)
+    - Dev:    project root   (kree/core/runtime.py → parent.parent = project root)
     """
     if _is_frozen() and hasattr(sys, "_MEIPASS"):
         return Path(sys._MEIPASS)
@@ -39,7 +39,7 @@ def _get_exe_dir() -> Path:
     Use this for *writable* paths that should persist (configs, logs).
 
     - Frozen: directory containing Kree AI.exe
-    - Dev:    project root
+    - Dev:    project root   (kree/core/runtime.py → parent.parent = project root)
     """
     if _is_frozen():
         return Path(sys.executable).parent

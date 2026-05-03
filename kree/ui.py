@@ -16,14 +16,8 @@ from kree.core.version import APP_VERSION  # type: ignore[import]
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 # ── Paths ────────────────────────────────────────────────────────────────────
-def get_base_dir():
-    # If frozen (PyInstaller), use the temp _MEIPASS folder for resources
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        return Path(sys._MEIPASS) 
-    # Otherwise use current source directory
-    return Path(__file__).resolve().parent
-
-BASE_DIR   = get_base_dir()
+from kree._paths import PROJECT_ROOT
+BASE_DIR = PROJECT_ROOT
 
 # Persist config (API keys) in the same folder as the .exe, not the temp folder
 def get_exe_dir():

@@ -16,7 +16,8 @@ from typing import Any
 from core import vault
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent if not getattr(sys, "frozen", False) else Path(sys.executable).parent
+from kree._paths import PROJECT_ROOT
+BASE_DIR = PROJECT_ROOT
 API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
 _CACHE_TTL_SEC = 180.0
 _SEARCH_CACHE: dict[tuple[str, str], tuple[float, str]] = {}

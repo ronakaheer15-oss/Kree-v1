@@ -4,13 +4,8 @@ from pathlib import Path
 import sys
 
 
-def get_base_dir() -> Path:
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent
-    return Path(__file__).resolve().parent.parent
-
-
-BASE_DIR    = get_base_dir()
+from kree._paths import PROJECT_ROOT
+BASE_DIR = PROJECT_ROOT
 MEMORY_PATH = BASE_DIR / "memory" / "long_term.json"
 _lock       = Lock()
 

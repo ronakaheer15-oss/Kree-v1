@@ -26,13 +26,8 @@ import requests  # type: ignore[import]
 from kree.core.version import APP_NAME, APP_VERSION  # type: ignore[import]
 
 
-def get_base_dir() -> Path:
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent
-    return Path(__file__).resolve().parent.parent
-
-
-BASE_DIR = get_base_dir()
+from kree._paths import PROJECT_ROOT
+BASE_DIR = PROJECT_ROOT
 CONFIG_DIR = BASE_DIR / "config"
 UPDATE_STATE_FILE = CONFIG_DIR / "update_state.json"
 UPDATE_SETTINGS_FILE = CONFIG_DIR / "update_settings.json"

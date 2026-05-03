@@ -7,14 +7,9 @@ import hashlib
 from pathlib import Path
 from cryptography.fernet import Fernet
 from typing import Dict, Any, Optional
+from kree._paths import PROJECT_ROOT
 
-def _get_base_dir() -> Path:
-    import sys
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent
-    return Path(__file__).resolve().parent.parent
-
-BASE_DIR = _get_base_dir()
+BASE_DIR = PROJECT_ROOT
 USERS_FILE = BASE_DIR / "memory" / "users.json"
 
 def _ensure_file():

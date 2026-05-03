@@ -24,7 +24,8 @@ import threading
 from pathlib import Path
 
 # ── Resolve paths ─────────────────────────────────────────────────────────────
-BASE_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
+from kree._paths import PROJECT_ROOT
+BASE_DIR = PROJECT_ROOT
 SERVICE_KEYS_PATH = BASE_DIR / "config" / "service_keys.json"
 
 # ── Lazy Supabase client ──────────────────────────────────────────────────────

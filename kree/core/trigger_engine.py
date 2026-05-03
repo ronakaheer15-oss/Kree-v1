@@ -4,6 +4,7 @@ import time
 import threading
 from pathlib import Path
 from datetime import datetime
+from kree._paths import PROJECT_ROOT
 
 try:
     import psutil
@@ -19,10 +20,9 @@ class TriggerEngine:
         self.callback = callback
         self.running = False
         self._thread = None
-        
+
         # Path resolution
-        base_dir = Path(__file__).resolve().parent.parent
-        self.memory_path = base_dir / "memory" / "smart_triggers.json"
+        self.memory_path = PROJECT_ROOT / "memory" / "smart_triggers.json"
         
         self.triggers = []
         self._load_triggers()
