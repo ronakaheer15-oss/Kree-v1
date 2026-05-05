@@ -5,7 +5,7 @@ import sys
 def prompt_windows_hello(message: str = "Aegis Face ID Verification Required.") -> bool:
     """Invokes the native Windows Hello (Face ID / PIN) security prompt."""
     if sys.platform != "win32":
-        return True # Fallback for Mac/Linux
+        return False  # Non-Windows has no Windows Hello; deny access rather than grant it
         
     try:
         class CREDUI_INFO(ctypes.Structure):
