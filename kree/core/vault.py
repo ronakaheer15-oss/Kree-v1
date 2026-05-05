@@ -38,12 +38,11 @@ def _get_fernet():
 
 def save_api_key(api_file_path: Path, api_key: str):
     f = _get_fernet()
-    # Graceful fallback to plaintext JSON if cryptography is missing
     if f is None:
-        os.makedirs(api_file_path.parent, exist_ok=True)
-        with open(api_file_path, "w", encoding="utf-8") as file:
-            json.dump({"gemini_api_key": api_key}, file, indent=4)
-        return
+        raise RuntimeError(
+            "Cannot save API key: the 'cryptography' library is not installed. "
+            "Run `pip install cryptography` to enable encrypted vault storage."
+        )
 
     encrypted = f.encrypt(api_key.encode('utf-8'))
     os.makedirs(api_file_path.parent, exist_ok=True)
@@ -193,7 +192,10 @@ def clear_unlock_trust() -> None:
 def encrypt_data(data: str) -> bytes:
     f = _get_fernet()
     if f is None:
-        return data.encode('utf-8')
+        raise RuntimeError(
+            "Cannot encrypt data: the 'cryptography' library is not installed. "
+            "Run `pip install cryptography` to enable encrypted vault storage."
+        )
     return f.encrypt(data.encode('utf-8'))
 
 def decrypt_data(raw_data: bytes) -> str:
