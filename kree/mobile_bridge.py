@@ -25,6 +25,37 @@ class RateLimiter:
 
 _ws_limiter = RateLimiter(max_calls=250, period=60) # Allow 15 websocket commands per minute
 
+
+def _validate_pwa_token(client_token: str, token_file) -> bool:
+    """Return True only when client_token matches a stored, non-expired token.
+
+    A missing or unreadable token file always denies access — never grants it.
+    """
+    from pathlib import Path
+    token_file = Path(token_file)
+
+    if not token_file.exists():
+        return False
+
+    try:
+        data = json.loads(token_file.read_text(encoding="utf-8"))
+        valid_token = data.get("token", "")
+        token_expires = data.get("expires", 0)
+    except Exception:
+        return False
+
+    if not valid_token or not client_token:
+        return False
+
+    if client_token != valid_token:
+        return False
+
+    if token_expires > 0 and time.time() > token_expires:
+        logging.warning("[MOBILE BRIDGE] Token Expired")
+        return False
+
+    return True
+
 class KreeMobileBridge:
     def __init__(self, port=8443, on_command_callback=None, on_connect_callback=None):
         self.port = port
@@ -155,27 +186,9 @@ class KreeMobileBridge:
                     if getattr(sys, 'frozen', False):
                         return pathlib.Path(sys.executable).parent / 'config'
                     return pathlib.Path(__file__).resolve().parent / 'config'
-                
-                token_file = _get_config_dir() / "pwa_token.json"
-                valid_token = ""
-                token_expires = 0
-                try:
-                    if token_file.exists():
-                        d = json.loads(token_file.read_text(encoding="utf-8"))
-                        valid_token = d.get("token", "")
-                        token_expires = d.get("expires", 0)
-                except Exception:
-                    pass
 
-                if valid_token and client_token == valid_token:
-                    # Token validity Check
-                    if time.time() > token_expires and token_expires > 0:
-                        logging.warning("[MOBILE BRIDGE] Token Expired")
-                    else:
-                        auth_passed = True
-                elif not valid_token:
-                    # No token file = no auth required (first boot)
-                    auth_passed = True
+                token_file = _get_config_dir() / "pwa_token.json"
+                auth_passed = _validate_pwa_token(client_token, token_file)
 
             if not auth_passed:
                 logging.warning(f"[MOBILE BRIDGE] Auth failed for {writer.get_extra_info('peername')}")
