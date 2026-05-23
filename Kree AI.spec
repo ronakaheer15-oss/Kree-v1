@@ -13,12 +13,16 @@
 
 import os
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_data_files
 
 
 ROOT = Path(os.environ.get('KREE_ROOT') or Path.cwd()).resolve()
 
 # ── Only bundle .onnx models from openwakeword (skip .tflite duplicates) ─────
-OWW_RESOURCES = ROOT.parent / '.venv' / 'Lib' / 'site-packages' / 'openwakeword' / 'resources'
+OWW_DATAS = collect_data_files(
+    'openwakeword',
+    includes=['resources/**/*.onnx'],
+)
 
 a = Analysis(
     [str(ROOT / 'main.py')],
@@ -29,7 +33,7 @@ a = Analysis(
         (str(ROOT / 'pwa'), 'pwa'),
         (str(ROOT / 'assets'), 'assets'),
         # openwakeword models (ONNX only)
-        (str(OWW_RESOURCES), 'openwakeword/resources'),
+        *OWW_DATAS,
     ],
     hiddenimports=[
         # ── Kree Action Modules ───────────────────────────────────────────
@@ -222,7 +226,6 @@ _EXCLUDE_BINARIES = {
     'qt5',                               # Any leaked Qt5 DLLs
     'pyside6',                           # Any leaked PySide6 binaries
     'shiboken6',                         # PySide6 binding generator
-    'libcrypto-3-x64.dll',              # Duplicate OpenSSL (keep one copy)
 }
 
 # Also strip .tflite model duplicates (we only use ONNX inference)
@@ -240,7 +243,22 @@ def _should_keep(name_tuple):
         return False
     return True
 
-trimmed_binaries = [b for b in a.binaries if _should_keep(b)]
+
+def _trim_binaries(entries):
+    kept = []
+    kept_libcrypto = False
+    for entry in entries:
+        name = entry[0].lower() if entry else ''
+        if 'libcrypto-3-x64.dll' in name:
+            if kept_libcrypto:
+                continue
+            kept_libcrypto = True
+        if _should_keep(entry):
+            kept.append(entry)
+    return kept
+
+
+trimmed_binaries = _trim_binaries(a.binaries)
 trimmed_datas = [d for d in a.datas if _should_keep(d)]
 
 coll = COLLECT(
