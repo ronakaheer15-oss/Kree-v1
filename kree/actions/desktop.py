@@ -6,7 +6,6 @@
 #
 # Built-in: wallpaper change, icon arrangement, desktop cleanup, organize by type
 
-import os
 import sys
 import json
 import shutil

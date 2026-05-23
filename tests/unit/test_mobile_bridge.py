@@ -1,8 +1,6 @@
 import asyncio
 import json
 import time
-import pytest
-from pathlib import Path
 
 
 # ---------------------------------------------------------------------------
