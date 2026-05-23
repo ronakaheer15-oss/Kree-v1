@@ -1,6 +1,8 @@
 import asyncio
 import concurrent.futures
 
+from kree.core.live_prompts import task_narration_prompt
+
 # Max 8 concurrent tasks to prevent GUI lockup
 _executor = concurrent.futures.ThreadPoolExecutor(max_workers=8)
 
@@ -34,11 +36,11 @@ async def run_parallel_tasks(tasks, live_session=None):
                 
         result = await loop.run_in_executor(_executor, execute)
         
-        # Push real-time narriation directly to voice
+        # Push real-time narration directly to voice.
         if live_session and narration:
             try:
                 await live_session.send(
-                    input=f"[SYSTEM OVERRIDE] Task {target} just completed successfully. Say the following narration out loud naturally: '{narration}'"
+                    input=task_narration_prompt(target, narration)
                 )
             except Exception:
                 pass

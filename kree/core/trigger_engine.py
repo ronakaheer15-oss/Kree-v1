@@ -112,6 +112,7 @@ class TriggerEngine:
         cond = trigger.get("condition", {})
         
         fired = False
+        fired_minute_key = None
         
         # 2. System Evaluate (CPU/RAM)
         if t_type == "system" and psutil:
@@ -134,14 +135,18 @@ class TriggerEngine:
             # Very basic time match (e.g. HH:MM)
             target_time = cond.get("time") # format "14:30"
             if target_time:
-                current_time = datetime.now().strftime("%H:%M")
+                current_dt = datetime.now()
+                current_time = current_dt.strftime("%H:%M")
+                fired_minute_key = current_dt.strftime("%Y-%m-%d %H:%M")
                 if current_time == target_time:
-                    fired = True
+                    fired = trigger.get("last_fired_minute") != fired_minute_key
 
         # 4. Execute Action
         if fired:
             # Update cooldown immediately to prevent double fires
             trigger["last_fired"] = now
+            if fired_minute_key:
+                trigger["last_fired_minute"] = fired_minute_key
             self._save_triggers()
             
             action = trigger.get("action", {})

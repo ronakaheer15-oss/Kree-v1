@@ -17,6 +17,7 @@ Tables required in Supabase:
 """
 
 import json
+import logging
 import platform
 import threading
 
@@ -24,6 +25,7 @@ import threading
 from kree._paths import PROJECT_ROOT
 BASE_DIR = PROJECT_ROOT
 SERVICE_KEYS_PATH = BASE_DIR / "config" / "service_keys.json"
+logger = logging.getLogger(__name__)
 
 # ── Lazy Supabase client ──────────────────────────────────────────────────────
 _supabase_client = None
@@ -54,19 +56,19 @@ def _init_supabase():
     anon_key = keys.get("supabase_anon_key", "")
 
     if not url or not anon_key:
-        print("[KREE BACKEND] No Supabase keys configured. Cloud features disabled.")
+        logger.info("No Supabase keys configured. Cloud features disabled.")
         return None
 
     try:
         from supabase import create_client
         _supabase_client = create_client(url, anon_key)
-        print("[KREE BACKEND] Supabase client initialized.")
+        logger.info("Supabase client initialized.")
         return _supabase_client
     except ImportError:
-        print("[KREE BACKEND] Supabase SDK not installed. Cloud features disabled.")
+        logger.info("Supabase SDK not installed. Cloud features disabled.")
         return None
     except Exception as e:
-        print(f"[KREE BACKEND] Supabase init failed: {e}")
+        logger.warning("Supabase init failed: %s", e)
         return None
 
 
@@ -93,7 +95,7 @@ def sync_preferences(prefs: dict):
                 "preferences": prefs,
             }).execute()
         except Exception as e:
-            print(f"[KREE BACKEND] Preference sync failed (non-fatal): {e}")
+            logger.warning("Preference sync failed (non-fatal): %s", e)
 
     threading.Thread(target=_sync, daemon=True).start()
 
@@ -112,7 +114,7 @@ def load_cloud_preferences() -> dict | None:
         if result.data:
             return result.data[0].get("preferences", {})
     except Exception as e:
-        print(f"[KREE BACKEND] Preference load failed (non-fatal): {e}")
+        logger.warning("Preference load failed (non-fatal): %s", e)
     return None
 
 
@@ -131,7 +133,7 @@ def save_automation(chain_name: str, steps: list):
                 "steps": steps,
             }).execute()
         except Exception as e:
-            print(f"[KREE BACKEND] Automation save failed (non-fatal): {e}")
+            logger.warning("Automation save failed (non-fatal): %s", e)
 
     threading.Thread(target=_save, daemon=True).start()
 
@@ -149,7 +151,7 @@ def load_automations() -> list:
             .execute()
         return result.data or []
     except Exception as e:
-        print(f"[KREE BACKEND] Automation load failed (non-fatal): {e}")
+        logger.warning("Automation load failed (non-fatal): %s", e)
         return []
 
 
@@ -172,9 +174,9 @@ def log_crash(error_type: str, error_details: str = ""):
                 "kree_version": _get_kree_version(),
                 "os": f"{platform.system()} {platform.version()}",
             }).execute()
-            print("[KREE BACKEND] Crash report logged to cloud.")
+            logger.info("Crash report logged to cloud.")
         except Exception as e:
-            print(f"[KREE BACKEND] Crash log failed (non-fatal): {e}")
+            logger.warning("Crash log failed (non-fatal): %s", e)
 
     threading.Thread(target=_log, daemon=True).start()
 
@@ -195,5 +197,5 @@ def get_latest_release() -> dict | None:
             .execute()
         return result.data[0] if result.data else None
     except Exception as e:
-        print(f"[KREE BACKEND] Release check failed (non-fatal): {e}")
+        logger.warning("Release check failed (non-fatal): %s", e)
         return None

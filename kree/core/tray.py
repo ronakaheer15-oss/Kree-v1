@@ -1,7 +1,10 @@
 import pystray
 from PIL import Image, ImageDraw
 import threading
-from pathlib import Path
+from kree.core.runtime import ASSETS_DIR
+
+_FALLBACK_ICONS = {}
+
 
 def _create_fallback_icon(color):
     """Generate a simple colored circle icon if actual assets are missing."""
@@ -10,25 +13,29 @@ def _create_fallback_icon(color):
     dc.ellipse((8, 8, 56, 56), fill=color)
     return image
 
+
+def _get_fallback_icon(color):
+    if color not in _FALLBACK_ICONS:
+        _FALLBACK_ICONS[color] = _create_fallback_icon(color)
+    return _FALLBACK_ICONS[color]
+
+
+def _load_icon(path, fallback_color):
+    try:
+        return Image.open(path)
+    except (FileNotFoundError, OSError):
+        return _get_fallback_icon(fallback_color)
+
+
 class SystemTrayApp:
     def __init__(self, on_wake_click, on_quit_click):
         self.on_wake_click = on_wake_click
         self.on_quit_click = on_quit_click
         self.icon = None
         
-        # Load or generate states
-        base_dir = Path("assets")
-        base_dir.mkdir(exist_ok=True)
-        
-        try:
-            self.img_sleeping = Image.open(base_dir / "kree_sleeping.png")
-        except:
-            self.img_sleeping = _create_fallback_icon('gray')
-            
-        try:
-            self.img_active = Image.open(base_dir / "kree_active.png")
-        except:
-            self.img_active = _create_fallback_icon('#00DC82') # Green
+        base_dir = ASSETS_DIR
+        self.img_sleeping = _load_icon(base_dir / "kree_sleeping.png", 'gray')
+        self.img_active = _load_icon(base_dir / "kree_active.png", '#00DC82')
 
     def run_daemon(self):
         """Run pystray loop in a dedicated background thread."""

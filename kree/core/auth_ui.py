@@ -106,7 +106,7 @@ AUTH_FLOW_JS = """
             <div id="auth-pin-panel" class="mt-6 hidden space-y-5">
               <div class="rounded-2xl border border-white/5 bg-black/30 p-5">
                 <div class="font-display text-sm font-bold tracking-[0.22em] text-white uppercase" id="pin-title">Create your 6-digit PIN</div>
-                <div class="mt-2 text-[11px] leading-6 text-zinc-500" id="pin-help">The bootstrap PIN is temporary. Set your own PIN before continuing.</div>
+                <div class="mt-2 text-[11px] leading-6 text-zinc-500" id="pin-help">Set your own PIN before continuing.</div>
                 <div class="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
                   <input id="pin-input" type="password" inputmode="numeric" maxlength="6" class="w-full rounded-2xl border border-white/10 bg-black/50 px-4 py-4 font-mono text-lg tracking-[0.5em] text-white outline-none transition focus:border-primary/50" placeholder="000000" />
                   <input id="pin-confirm" type="password" inputmode="numeric" maxlength="6" class="w-full rounded-2xl border border-white/10 bg-black/50 px-4 py-4 font-mono text-lg tracking-[0.5em] text-white outline-none transition focus:border-primary/50" placeholder="Confirm" />
@@ -224,7 +224,7 @@ AUTH_FLOW_JS = """
       var pinTitle = document.getElementById('pin-title');
       var pinHelp = document.getElementById('pin-help');
       if (pinTitle) pinTitle.textContent = 'Create your 6-digit PIN';
-      if (pinHelp) pinHelp.textContent = 'Your bootstrap PIN is temporary. Set a personal 6-digit PIN to continue.';
+      if (pinHelp) pinHelp.textContent = 'Set a personal 6-digit PIN to continue.';
       document.getElementById('pin-confirm').classList.remove('hidden');
       setMessage(payload.message || '');
       return;

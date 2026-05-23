@@ -523,40 +523,6 @@ TOOL_DECLARATIONS = [
     }
 },
 {
-    "name": "file_controller",
-    "description": (
-        "Advanced file & folder management automation. "
-        "Use for bulk rename, organizing downloads, finding duplicates, etc."
-    ),
-    "parameters": {
-        "type": "OBJECT",
-        "properties": {
-            "action":      {"type": "STRING", "description": "organize | rename_bulk | find_duplicates | move | delete"},
-            "path":        {"type": "STRING", "description": "Target directory path (default: Downloads or Desktop if not specified)"},
-            "pattern":     {"type": "STRING", "description": "Regex or glob pattern for renaming/finding"},
-            "destination": {"type": "STRING", "description": "Destination directory"}
-        },
-        "required": ["action"]
-    }
-},
-{
-    "name": "browser_control",
-    "description": (
-        "Automates browser actions in the background. "
-        "Use for filling forms, logging into sites, web scraping, or downloading files via URL."
-    ),
-    "parameters": {
-        "type": "OBJECT",
-        "properties": {
-            "action": {"type": "STRING", "description": "search | form_fill | scrape | navigate"},
-            "url":    {"type": "STRING", "description": "Target website URL"},
-            "query":  {"type": "STRING", "description": "Search query or specific data to find/scrape"},
-            "form_data": {"type": "STRING", "description": "JSON string of data to fill into forms"}
-        },
-        "required": ["action"]
-    }
-},
-{
     "name": "productivity_manager",
     "description": (
         "Manages emails and calendar events. "

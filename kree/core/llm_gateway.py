@@ -7,7 +7,8 @@ based on the user's active intelligence mode.
 import os
 import json
 import logging
-from pathlib import Path
+from kree.memory.config_manager import CONFIG_DIR
+from kree.core import vault
 
 # Try to import Google's SDK for cloud mode
 try:
@@ -34,22 +35,25 @@ class KreeIntelligenceEngine:
         - LOCAL_APEX_31B  (Ollama: command-r or similar 30B+)
         """
         self.mode = mode
-        self.ollama_host = "http://127.0.0.1:11434"
+        self.ollama_host = os.environ.get("KREE_OLLAMA_HOST", "http://127.0.0.1:11434")
         
         # Load real mode from config if it exists
-        config_path = Path(os.path.dirname(__file__)).parent / "config" / "settings.json"
+        config_path = CONFIG_DIR / "settings.json"
         if config_path.exists():
             try:
                 with open(config_path, "r", encoding="utf-8") as f:
                     cfg = json.load(f)
                     self.mode = cfg.get("intelligence_mode", self.mode)
+                    self.ollama_host = cfg.get("ollama_host", self.ollama_host)
             except Exception:
                 pass
 
         # Setup Cloud Client
         self.client = None
         if "CLOUD" in self.mode and genai:
-            api_key = os.environ.get("GEMINI_API_KEY", "")
+            api_key = vault.load_api_key(CONFIG_DIR / "api_keys.json").strip()
+            if not api_key:
+                api_key = os.environ.get("GEMINI_API_KEY", "").strip()
             if api_key:
                 self.client = genai.Client(api_key=api_key)
 

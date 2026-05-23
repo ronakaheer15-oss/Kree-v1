@@ -52,7 +52,7 @@ def check_for_update() -> dict:
             return {"available": False, "reason": "repo_not_configured"}
 
         url = f"https://api.github.com/repos/{repo}/releases/latest"
-        req = urllib.request.Request(url, headers={"User-Agent": "KreeAI/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": f"KreeAI/{get_current_version()}"})
         
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
@@ -127,23 +127,16 @@ def download_only(download_url: str) -> str:
 
 def run_installer_and_exit(installer_path: str = "") -> bool:
     """
-    Executes the installer silently and shuts down the current process.
+    Compatibility wrapper for the canonical manifest/ZIP update service.
     """
     path = installer_path or _pending_update.get("downloaded_path", "")
     if not path or not os.path.exists(path):
         return False
 
     try:
-        import subprocess
-        print(f"[KREE UPDATE] Launching final installer: {path}")
-        subprocess.Popen(
-            [path, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/FORCECLOSEAPPLICATIONS"],
-            creationflags=0x00000008,  # DETACHED_PROCESS
-        )
-        # Give it a moment to start
-        import time
-        time.sleep(1.5)
-        os._exit(0)
+        from kree.core.update_service import apply_update
+        result = apply_update(path)
+        return bool(result.get("ok"))
     except Exception as e:
         print(f"[KREE UPDATE] Final install trigger failed: {e}")
         return False
@@ -159,15 +152,16 @@ def download_and_install(download_url: str, on_progress=None) -> bool:
 
 def check_update_background(ui=None, speak_fn=None, auto_download=True):
     """
-    Non-blocking background update check.
-    Now optionally triggers a silent download immediately.
+    Non-blocking background update check routed through update_service.
     """
     def _check():
-        result = check_for_update()
-        if not result.get("available"):
+        from kree.core.update_service import check_for_updates, download_update
+
+        result = check_for_updates()
+        if not result.get("update_available"):
             return
 
-        version = result.get("version", "?")
+        version = result.get("latest_version", "?")
         url = result.get("download_url", "")
         
         _pending_update.update({
@@ -185,12 +179,16 @@ def check_update_background(ui=None, speak_fn=None, auto_download=True):
             if ui:
                 ui._eval("try{ showToast('Downloading update in background...', '#8b5cf6'); }catch(e){}")
             
-            path = download_only(url)
-            if path and ui:
-                ui.write_log(f"Kree: v{version} is ready to install.")
-                ui._eval(f"try{{ showToast('Kree v{version} is ready sir! It will be applied on restart.', '#00dc82'); }}catch(e){{}}")
-                if speak_fn:
-                    speak_fn(f"Sir, update version {version} has been downloaded and is ready to be applied whenever you restart Kree.")
+            downloaded = download_update()
+            path = downloaded.get("download_path", "")
+            if path:
+                _pending_update["downloaded_path"] = path
+                _pending_update["is_ready"] = True
+                if ui:
+                    ui.write_log(f"Kree: v{version} is ready to install.")
+                    ui._eval(f"try{{ showToast('Kree v{version} is ready. It will be applied on restart.', '#00dc82'); }}catch(e){{}}")
+                    if speak_fn:
+                        speak_fn(f"Update version {version} has been downloaded and is ready to apply on restart.")
 
     threading.Thread(target=_check, daemon=True).start()
 

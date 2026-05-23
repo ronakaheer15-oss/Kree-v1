@@ -2,6 +2,8 @@ import platform
 import os
 import shutil
 
+from kree.core.live_prompts import onboarding_prompt
+
 def is_first_launch() -> bool:
     import kree.core.user_profile as up
     profile = up.get_user_profile()
@@ -49,7 +51,7 @@ async def first_time_setup(live_session):
     print("[JARVIS] 🌱 First Time Setup Sequence Initiated")
     try:
         await live_session.send(
-            input="[SYSTEM OVERRIDE] We are initiating first time setup. Introduce yourself warmly as Kree, explain that you need to get to know them, and ask them for their name."
+            input=onboarding_prompt()
         )
         
         # Determine background info automatically

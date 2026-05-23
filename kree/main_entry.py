@@ -10,14 +10,6 @@ import platform as _platform
 import logging as _logging
 from pathlib import Path as _Path
 
-# ── DEV-ONLY: .venv path injection (NEVER in frozen EXE) ─────────────────────
-if not getattr(_sys, "frozen", False):
-    _VENV_SITE_PACKAGES = _Path(__file__).resolve().parent.parent / ".venv" / "Lib" / "site-packages"
-    if _VENV_SITE_PACKAGES.exists():
-        _venv_site_packages_str = str(_VENV_SITE_PACKAGES)
-        if _venv_site_packages_str not in _sys.path:
-            _sys.path.insert(0, _venv_site_packages_str)
-
 if hasattr(_sys.stdout, 'buffer'):
     _sys.stdout = _io.TextIOWrapper(_sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
 if hasattr(_sys.stderr, 'buffer'):
@@ -26,9 +18,10 @@ if hasattr(_sys.stderr, 'buffer'):
 # ── PRODUCTION LOGGING ───────────────────────────────────────────────────────
 try:
     if getattr(_sys, "frozen", False):
-        log_dir = _Path(_os.environ.get("LOCALAPPDATA", "C:\\Temp")) / "Kree AI"
+        local_app_data = _os.environ.get("LOCALAPPDATA")
+        log_dir = (_Path(local_app_data) if local_app_data else _Path.home() / "AppData" / "Local") / "Kree AI"
     else:
-        log_dir = _Path(__file__).parent / "logs"
+        log_dir = _Path(__file__).resolve().parent.parent / "logs"
     
     log_dir.mkdir(parents=True, exist_ok=True)
     _LOG_FILE = log_dir / "kree_debug.log"
@@ -93,44 +86,63 @@ except ImportError:
 
 import time
 from kree.ui import JarvisUI  # type: ignore[import]
+from kree._paths import PROJECT_ROOT  # type: ignore[import]
 from kree.memory.memory_manager import load_memory, format_memory_for_prompt  # type: ignore[import]
 from kree.memory.config_manager import load_audio_settings, load_telemetry_settings  # type: ignore[import]
 from kree.core.telemetry import TelemetryEvents, TelemetryLogger, export_session_trace, load_session_events  # type: ignore[import]
 
+class ToolLoadError(RuntimeError):
+    """Raised when a lazy-loaded tool module or function cannot be loaded."""
+
+
+TOOL_MODULE_MAP = {
+    "flight_finder": ("kree.actions.flight_finder", "flight_finder"),
+    "open_app": ("kree.actions.open_app", "open_app"),
+    "downloader_updater": ("kree.actions.downloader_updater", "downloader_updater"),
+    "turboquant_helper": ("kree.actions.turboquant_helper", "turboquant_helper"),
+    "openapps_automation": ("kree.actions.openapps_automation", "openapps_automation"),
+    "weather_action": ("kree.actions.weather_report", "weather_action"),
+    "send_message": ("kree.actions.send_message", "send_message"),
+    "reminder": ("kree.actions.reminder", "reminder"),
+    "computer_settings": ("kree.actions.computer_settings", "computer_settings"),
+    "screen_process": ("kree.actions.screen_processor", "screen_process"),
+    "youtube_video": ("kree.actions.youtube_video", "youtube_video"),
+    "cmd_control": ("kree.actions.cmd_control", "cmd_control"),
+    "desktop_control": ("kree.actions.desktop", "desktop_control"),
+    "browser_control": ("kree.actions.browser_control", "browser_control"),
+    "file_controller": ("kree.actions.file_controller", "file_controller"),
+    "code_helper": ("kree.actions.code_helper", "code_helper"),
+    "dev_agent": ("kree.actions.dev_agent", "dev_agent"),
+    "web_search_action": ("kree.actions.web_search", "web_search_action"),
+    "computer_control": ("kree.actions.computer_control", "computer_control"),
+    "productivity_manager": ("kree.actions.email_calendar", "productivity_manager"),
+}
 
 
 class LazyToolLoader:
+    def __init__(self, module_map: dict[str, tuple[str, str]] | None = None):
+        self.module_map = module_map or TOOL_MODULE_MAP
+
     def __getattr__(self, name):
+        if name not in self.module_map:
+            raise AttributeError(f"Tool {name} not found")
+
         def wrapper(*args, **kwargs):
             import importlib
-            module_map = {
-                "flight_finder": ("kree.actions.flight_finder", "flight_finder"),
-                "open_app": ("kree.actions.open_app", "open_app"),
-                "downloader_updater": ("kree.actions.downloader_updater", "downloader_updater"),
-                "turboquant_helper": ("kree.actions.turboquant_helper", "turboquant_helper"),
-                "openapps_automation": ("kree.actions.openapps_automation", "openapps_automation"),
-                "weather_action": ("kree.actions.weather_report", "weather_action"),
-                "send_message": ("kree.actions.send_message", "send_message"),
-                "reminder": ("kree.actions.reminder", "reminder"),
-                "computer_settings": ("kree.actions.computer_settings", "computer_settings"),
-                "screen_process": ("kree.actions.screen_processor", "screen_process"),
-                "youtube_video": ("kree.actions.youtube_video", "youtube_video"),
-                "cmd_control": ("kree.actions.cmd_control", "cmd_control"),
-                "desktop_control": ("kree.actions.desktop", "desktop_control"),
-                "browser_control": ("kree.actions.browser_control", "browser_control"),
-                "file_controller": ("kree.actions.file_controller", "file_controller"),
-                "code_helper": ("kree.actions.code_helper", "code_helper"),
-                "dev_agent": ("kree.actions.dev_agent", "dev_agent"),
-                "web_search_action": ("kree.actions.web_search", "web_search_action"),
-                "computer_control": ("kree.actions.computer_control", "computer_control"),
-                "productivity_manager": ("kree.actions.email_calendar", "productivity_manager")
-            }
-            if name in module_map:
-                mod_name, func_name = module_map[name]
+
+            mod_name, func_name = self.module_map[name]
+            try:
                 mod = importlib.import_module(mod_name)
                 func = getattr(mod, func_name)
-                return func(*args, **kwargs)
-            raise AttributeError(f"Tool {name} not found")
+            except (ImportError, AttributeError) as exc:
+                logging.exception("Failed to load tool %s from %s.%s", name, mod_name, func_name)
+                raise ToolLoadError(
+                    f"Tool '{name}' could not be loaded from {mod_name}.{func_name}: {exc}"
+                ) from exc
+            return func(*args, **kwargs)
+
+        wrapper.__name__ = name
+        wrapper.__qualname__ = f"{self.__class__.__name__}.{name}"
         return wrapper
 
 lazy_tools = LazyToolLoader()
@@ -160,14 +172,14 @@ from kree.core.trigger_engine import TriggerEngine
 def get_base_dir():
     if getattr(sys, "frozen", False):
         return Path(sys.executable).parent
-    return Path(__file__).resolve().parent
+    return PROJECT_ROOT
 
 
 BASE_DIR = get_base_dir()
 API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
-PROMPT_PATH = BASE_DIR / "core" / "prompt.txt"
-LIVE_MODEL = "models/gemini-2.5-flash-native-audio-preview-12-2025"
-FORMAT = pyaudio.paInt16 if pyaudio else 8  # paInt16 = 8
+PROMPT_PATH = BASE_DIR / "config" / "prompt.txt"
+LIVE_MODEL = os.environ.get("KREE_LIVE_MODEL", "models/gemini-2.5-flash-native-audio-preview-12-2025")
+FORMAT = pyaudio.paInt16 if pyaudio else 8  # PyAudio paInt16 constant value
 CHANNELS = 1
 SEND_SAMPLE_RATE = 16000
 RECEIVE_SAMPLE_RATE = 24000
@@ -175,6 +187,7 @@ CHUNK_SIZE = 1024
 MAX_AUDIO_IN_QUEUE = 96
 MAX_AUDIO_OUT_QUEUE = 48
 MAX_PLAY_QUEUE = 120
+_LOCAL_SPEECH_LIMIT = threading.BoundedSemaphore(1)
 
 
 # ── Lazy PyAudio init (prevents crash if no audio device at startup) ──────────
@@ -253,6 +266,9 @@ def _load_system_prompt() -> str:
 def _local_speech_voice(text: str) -> None:
     """Instant local Windows speech using Edge TTS neural voices to eliminate robotic fallback."""
     import threading
+    if not _LOCAL_SPEECH_LIMIT.acquire(blocking=False):
+        return
+
     def speak():
         try:
             import os
@@ -302,6 +318,9 @@ def _local_speech_voice(text: str) -> None:
         except Exception as e:
             print(f"[KREE TTS] ⚠️ Local neural speech failed: {e}")
             
+        finally:
+            _LOCAL_SPEECH_LIMIT.release()
+
     threading.Thread(target=speak, daemon=True).start()
 
 
@@ -326,6 +345,27 @@ def _local_welcome_voice(kree_instance) -> None:
 
 
 _GREETING_MEMORY: dict[str, list[str]] = {}
+
+
+def _load_app_process_map() -> dict[str, str]:
+    defaults = {
+        "chrome": "chrome.exe",
+        "spotify": "Spotify.exe",
+        "vscode": "Code.exe",
+        "discord": "Discord.exe",
+        "notepad": "notepad.exe",
+        "youtube": "chrome.exe",
+        "github": "chrome.exe",
+    }
+    config_path = BASE_DIR / "config" / "app_process_map.json"
+    try:
+        if config_path.exists():
+            raw = json.loads(config_path.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                defaults.update({str(k).lower(): str(v) for k, v in raw.items() if v})
+    except Exception:
+        pass
+    return defaults
 
 
 def _build_contextual_greeting(name: str = "sir") -> str:
@@ -391,19 +431,20 @@ def _build_contextual_greeting(name: str = "sir") -> str:
     elif any(b in active_title for b in ("chrome", "firefox", "edge", "brave", "opera", "safari")):
         activity_context = "browsing"
 
-    # Fallback to tasklist if foreground detection yields nothing specific
+    # Fallback to psutil if foreground detection yields nothing specific.
     if not activity_context:
         try:
-            import subprocess
-            tasklist = subprocess.check_output(
-                "tasklist /FO CSV /NH", shell=True, stderr=subprocess.DEVNULL
-            ).decode(errors="ignore").lower()
+            import psutil
+            process_names = {
+                (proc.info.get("name") or "").lower()
+                for proc in psutil.process_iter(["name"])
+            }
 
-            if "code.exe" in tasklist or "devenv.exe" in tasklist:
+            if "code.exe" in process_names or "devenv.exe" in process_names:
                 activity_context = "coding"
-            elif "spotify.exe" in tasklist:
+            elif "spotify.exe" in process_names:
                 activity_context = "music"
-            elif any(g in tasklist for g in ("steam.exe", "epicgameslauncher", "riotclientservices")):
+            elif any(g in process_names for g in ("steam.exe", "epicgameslauncher.exe", "riotclientservices.exe")):
                 activity_context = "gaming"
         except Exception:
             pass
@@ -590,6 +631,8 @@ def _build_contextual_greeting(name: str = "sir") -> str:
 
 class ContextTTSEngine:
     """Pre-generates the context greeting as an MP3 using high-quality Edge TTS in the background."""
+    REFRESH_INTERVAL_SECONDS = 300
+
     def __init__(self):
         import os
         import warnings
@@ -648,7 +691,7 @@ class ContextTTSEngine:
                     self.last_voice = edge_voice
             except Exception:
                 pass
-            time.sleep(5)
+            time.sleep(self.REFRESH_INTERVAL_SECONDS)
 
 _memory_turn_counter = 0
 _memory_turn_lock = threading.Lock()
@@ -1139,7 +1182,7 @@ class JarvisLive:
             self.system_tray.set_sleeping()
         try:
             import winsound
-            winsound.PlaySound('assets/sounds/sleep.wav', winsound.SND_FILENAME | winsound.SND_ASYNC)
+            winsound.PlaySound(str(BASE_DIR / "assets" / "sounds" / "sleep.wav"), winsound.SND_FILENAME | winsound.SND_ASYNC)
         except: pass
         if hasattr(self, 'wake_event'):
             self.wake_event.clear()
@@ -1193,7 +1236,7 @@ class JarvisLive:
                 # Fallback to standard wake chime if pre-renderer hasn't built it yet
                 try:
                     import winsound
-                    winsound.PlaySound('assets/sounds/wake.wav', winsound.SND_FILENAME | winsound.SND_ASYNC)
+                    winsound.PlaySound(str(BASE_DIR / "assets" / "sounds" / "wake.wav"), winsound.SND_FILENAME | winsound.SND_ASYNC)
                 except Exception:
                     pass
 
@@ -1308,15 +1351,7 @@ class JarvisLive:
                 try:
                     import psutil
                     self.ui.write_log(f"Kree: Closing {app_name} now...")
-                    APP_MAP = {
-                        "chrome": "chrome.exe",
-                        "spotify": "Spotify.exe",
-                        "vscode": "Code.exe",
-                        "discord": "Discord.exe",
-                        "notepad": "notepad.exe",
-                        "youtube": "chrome.exe", 
-                        "github": "chrome.exe"
-                    }
+                    APP_MAP = _load_app_process_map()
                     process_name = APP_MAP.get(app_name.lower(), app_name)
                     
                     killed = False
