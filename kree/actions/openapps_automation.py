@@ -67,8 +67,6 @@ def _get_openapps_dir() -> Path:
         here.parents[1] / "OpenApps-main",
         Path.cwd() / "_Related_Projects" / "OpenApps-main",
         Path.cwd() / "OpenApps-main",
-        Path("E:/Mark-XXX-main/_Related_Projects/OpenApps-main"),
-        Path("E:/OpenApps-main"), # Force hardcode just in case it's specifically in the E root
     ]
     for c in candidates:
         if (c / "launch.py").exists():

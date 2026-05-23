@@ -10,6 +10,7 @@
 import json
 import re
 import time
+from urllib.parse import quote_plus
 from pathlib import Path
 
 import pyautogui
@@ -308,6 +309,25 @@ def _scrape_trending(region: str = "TR", max_results: int = 8) -> list[dict]:
         print(f"[YouTube] ⚠️ Trending scrape failed: {e}")
         return []
 
+def _find_first_video_url(query: str) -> str | None:
+    if not _REQUESTS_OK:
+        return None
+
+    url = f"https://www.youtube.com/results?search_query={quote_plus(query)}"
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=12)
+        response.raise_for_status()
+        seen = set()
+        for video_id in re.findall(r'"videoId":"([A-Za-z0-9_-]{11})"', response.text):
+            if video_id in seen:
+                continue
+            seen.add(video_id)
+            return f"https://www.youtube.com/watch?v={video_id}"
+    except Exception as e:
+        print(f"[YouTube] Search parse failed: {e}")
+    return None
+
+
 def _handle_play(parameters: dict, player) -> str:
     query = parameters.get("query", "").strip()
     if not query:
@@ -318,34 +338,17 @@ def _handle_play(parameters: dict, player) -> str:
 
     open_browser()
 
-    search_query = query.replace(" ", "+")
-    url = f"https://www.youtube.com/results?search_query={search_query}"
+    direct_url = _find_first_video_url(query)
+    url = direct_url or f"https://www.youtube.com/results?search_query={quote_plus(query)}"
 
     pyautogui.hotkey("ctrl", "l")
     time.sleep(0.3)
     pyautogui.write(url, interval=0.02)
     pyautogui.press("enter")
-    time.sleep(3.5)
-
-    thumbnails = find_video_thumbnails()
-
-    if len(thumbnails) >= 2:
-        x, y = thumbnails[1]
-        print(f"[YouTube] 🎯 Clicking 2nd thumbnail at ({x}, {y})")
-        pyautogui.click(x, y)
+    if direct_url:
         return f"Playing YouTube video for: {query}"
 
-    elif len(thumbnails) == 1:
-        x, y = thumbnails[0]
-        print(f"[YouTube] ⚠️ One thumbnail found, clicking at ({x}, {y})")
-        pyautogui.click(x, y)
-        return f"Playing YouTube video for: {query}"
-
-    else:
-        print("[YouTube] ⚠️ No thumbnails found, using fallback position")
-        screen_w, screen_h = pyautogui.size()
-        pyautogui.click(screen_w // 2, int(screen_h * 0.45))
-        return f"Attempted to play YouTube video for: {query}"
+    return f"Opened YouTube search results for: {query}"
 
 
 def _handle_summarize(parameters: dict, player, speak) -> str:
