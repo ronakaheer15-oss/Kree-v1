@@ -3,12 +3,16 @@ import base64
 import uuid
 from datetime import datetime
 import hashlib
+import hmac
+import secrets
 from cryptography.fernet import Fernet
 from typing import Optional
 from kree._paths import PROJECT_ROOT
 
 BASE_DIR = PROJECT_ROOT
 USERS_FILE = BASE_DIR / "memory" / "users.json"
+PBKDF2_ITERATIONS = 200_000
+FERNET_KDF_SALT = b"kree.auth_manager.fernet.v1"
 
 def _ensure_file():
     if not USERS_FILE.exists():
@@ -23,15 +27,53 @@ def _load_data() -> dict:
         return {"users": {}}
 
 def _save_data(data: dict):
-    USERS_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = USERS_FILE.with_suffix(f"{USERS_FILE.suffix}.tmp")
+    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    tmp.replace(USERS_FILE)
 
 def hash_string(text: str) -> str:
-    """Basic SHA256 hashing for passwords and pins (with a fixed salt or just direct for local usage)."""
-    return hashlib.sha256(text.encode('utf-8')).hexdigest()
+    """Return a salted PBKDF2 hash record for passwords and PINs."""
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        text.encode("utf-8"),
+        salt.encode("ascii"),
+        PBKDF2_ITERATIONS,
+    ).hex()
+    return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${salt}${digest}"
+
+
+def _verify_hash(text: str, stored_hash: str) -> bool:
+    stored_hash = stored_hash or ""
+    if stored_hash.startswith("pbkdf2_sha256$"):
+        try:
+            _, iterations_text, salt, expected = stored_hash.split("$", 3)
+            digest = hashlib.pbkdf2_hmac(
+                "sha256",
+                text.encode("utf-8"),
+                salt.encode("ascii"),
+                int(iterations_text),
+            ).hex()
+            return hmac.compare_digest(digest, expected)
+        except Exception:
+            return False
+
+    legacy = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return hmac.compare_digest(legacy, stored_hash)
 
 def derive_key(password: str) -> bytes:
     """Derive encryption key FROM the user's password."""
-    # Using SHA256 digest to create a 32-byte key suitable for Fernet
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        FERNET_KDF_SALT,
+        PBKDF2_ITERATIONS,
+        dklen=32,
+    )
+
+
+def _derive_legacy_key(password: str) -> bytes:
     return hashlib.sha256(password.encode('utf-8')).digest()
 
 def encrypt_api_key(api_key: str, password: str) -> str:
@@ -41,8 +83,13 @@ def encrypt_api_key(api_key: str, password: str) -> str:
 
 def decrypt_api_key(encrypted: str, password: str) -> str:
     """Decrypt the API key when needed using the password."""
-    key = base64.urlsafe_b64encode(derive_key(password))
-    return Fernet(key).decrypt(encrypted.encode('utf-8')).decode('utf-8')
+    for raw_key in (derive_key(password), _derive_legacy_key(password)):
+        key = base64.urlsafe_b64encode(raw_key)
+        try:
+            return Fernet(key).decrypt(encrypted.encode('utf-8')).decode('utf-8')
+        except Exception:
+            continue
+    raise ValueError("Invalid password or encrypted API key.")
 
 class AuthManager:
     @staticmethod
@@ -85,8 +132,6 @@ class AuthManager:
     def sign_in_user(identifier: str, password: str) -> dict:
         data = _load_data()
         users = data.get("users", {})
-        pass_hash = hash_string(password)
-        
         target_user = None
         for uid, udata in users.items():
             if udata.get("handle") == identifier or udata.get("email") == identifier:
@@ -96,7 +141,7 @@ class AuthManager:
         if not target_user:
             return {"ok": False, "message": "Invalid handle or email."}
             
-        if target_user.get("password_hash") != pass_hash:
+        if not _verify_hash(password, target_user.get("password_hash", "")):
             return {"ok": False, "message": "Invalid password."}
             
         safe_user = {k: v for k,v in target_user.items() if not k.endswith('_hash') and not k.startswith('encrypted_')}
@@ -134,7 +179,7 @@ class AuthManager:
         if user_id not in users:
             return {"ok": False, "message": "User not found."}
             
-        if users[user_id].get("pin_hash") != hash_string(pin):
+        if not _verify_hash(pin, users[user_id].get("pin_hash", "")):
             return {"ok": False, "message": "Incorrect PIN."}
             
         api_key = users[user_id].get("encrypted_api_key")

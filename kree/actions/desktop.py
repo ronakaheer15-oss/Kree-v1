@@ -13,6 +13,8 @@ import shutil
 import subprocess
 import ctypes
 import tempfile
+import ast
+import time
 import pyautogui
 from pathlib import Path
 from datetime import datetime
@@ -43,6 +45,13 @@ BLOCKED_KEYWORDS = [
 
 
 def _is_safe_code(code: str) -> tuple[bool, str]:
+    if code.strip().upper() == "UNSAFE":
+        return False, "Model marked task unsafe"
+    try:
+        ast.parse(code, mode="exec")
+    except SyntaxError as exc:
+        return False, f"Invalid Python: {exc}"
+
     code_lower = code.lower()
     for keyword in BLOCKED_KEYWORDS:
         if keyword.lower() in code_lower:
@@ -65,12 +74,8 @@ def _ask_gemini_for_desktop_action(task: str) -> str:
     prompt = f"""You are a Windows desktop automation expert.
 Generate safe Python code using ONLY these allowed modules:
 - pyautogui (mouse, keyboard, screenshots)
-- pathlib.Path (already imported as Path)
-- shutil (ONLY: copy2, copytree, move, disk_usage)
-- os.path (ONLY: exists, join, dirname, basename, splitext)
-- time (sleep only)
-- ctypes (Windows API calls only)
-- winreg (registry READ only)
+- time.sleep
+- print
 
 Desktop path: {desktop}
 
@@ -80,6 +85,7 @@ Rules:
 - NO subprocess calls
 - NO exec() or eval()
 - NO file write operations
+- NO imports, loops, function definitions, classes, or attribute access outside pyautogui/time
 - If task cannot be done safely, output exactly: UNSAFE
 
 Task: {task}
@@ -98,46 +104,12 @@ Python code:"""
 
 
 def _execute_generated_code(code: str) -> str:
-    """Safely executes Gemini-generated desktop automation code."""
+    """Run a small, allowlisted subset of Gemini-generated desktop automation code."""
     safe, reason = _is_safe_code(code)
     if not safe:
         return f"⛔ Blocked for safety: {reason}"
 
-    allowed_globals = {
-        "pyautogui": pyautogui,
-        "Path": Path,
-        "shutil": shutil,
-        "ctypes": ctypes,
-        "time": __import__("time"),
-        "os": type("os", (), {
-            "path": os.path,
-            "listdir": os.listdir,
-            "getcwd": os.getcwd,
-            "environ": os.environ,
-        })(),
-        "__builtins__": {
-            "print": print,
-            "len": len,
-            "str": str,
-            "int": int,
-            "float": float,
-            "bool": bool,
-            "list": list,
-            "dict": dict,
-            "range": range,
-            "enumerate": enumerate,
-            "sorted": sorted,
-            "isinstance": isinstance,
-            "hasattr": hasattr,
-            "getattr": getattr,
-            "max": max,
-            "min": min,
-            "sum": sum,
-        }
-    }
-
     output_lines = []
-    allowed_globals["print"] = lambda *args: output_lines.append(" ".join(str(a) for a in args))
 
     # Security Sandboxing Confirmation
     try:
@@ -152,10 +124,88 @@ def _execute_generated_code(code: str) -> str:
         if result != 1:
             return "⛔ Execution blocked: User denied permission."
             
-        exec(code, allowed_globals)
+        _run_allowed_desktop_code(code, output_lines)
         return "\n".join(output_lines) if output_lines else "Task completed successfully."
     except Exception as e:
         return f"Execution error: {e}\n\nCode attempted:\n{code[:200]}"
+
+
+_ALLOWED_PYAUTOGUI_CALLS = {
+    "click", "doubleClick", "rightClick", "moveTo", "dragTo", "scroll",
+    "press", "hotkey", "write", "typewrite", "screenshot", "size",
+}
+
+
+def _literal_value(node: ast.AST, variables: dict[str, object]) -> object:
+    if isinstance(node, ast.Constant):
+        return node.value
+    if isinstance(node, ast.List):
+        return [_literal_value(item, variables) for item in node.elts]
+    if isinstance(node, ast.Tuple):
+        return tuple(_literal_value(item, variables) for item in node.elts)
+    if isinstance(node, ast.Dict):
+        return {
+            _literal_value(key, variables): _literal_value(value, variables)
+            for key, value in zip(node.keys, node.values)
+            if key is not None
+        }
+    if isinstance(node, ast.Name) and node.id in variables:
+        return variables[node.id]
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+        value = _literal_value(node.operand, variables)
+        if not isinstance(value, (int, float)):
+            raise ValueError("Unary operators are only allowed for numbers.")
+        return value if isinstance(node.op, ast.UAdd) else -value
+    raise ValueError(f"Unsupported expression: {type(node).__name__}")
+
+
+def _resolve_allowed_call(node: ast.Call, output_lines: list[str]):
+    func = node.func
+    if isinstance(func, ast.Name) and func.id == "print":
+        return lambda *args, **kwargs: output_lines.append(" ".join(str(arg) for arg in args))
+
+    if not isinstance(func, ast.Attribute) or not isinstance(func.value, ast.Name):
+        raise ValueError("Only allowlisted direct calls are permitted.")
+
+    root = func.value.id
+    name = func.attr
+    if name.startswith("_"):
+        raise ValueError("Private attributes are not allowed.")
+    if root == "pyautogui" and name in _ALLOWED_PYAUTOGUI_CALLS:
+        return getattr(pyautogui, name)
+    if root == "time" and name == "sleep":
+        return time.sleep
+
+    raise ValueError(f"Call not allowed: {root}.{name}")
+
+
+def _call_allowed(node: ast.Call, variables: dict[str, object], output_lines: list[str]) -> object:
+    func = _resolve_allowed_call(node, output_lines)
+    args = [_literal_value(arg, variables) for arg in node.args]
+    kwargs = {
+        kw.arg: _literal_value(kw.value, variables)
+        for kw in node.keywords
+        if kw.arg is not None
+    }
+    return func(*args, **kwargs)
+
+
+def _run_allowed_desktop_code(code: str, output_lines: list[str]) -> None:
+    tree = ast.parse(code, mode="exec")
+    variables: dict[str, object] = {}
+
+    for stmt in tree.body:
+        if isinstance(stmt, (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.ClassDef, ast.For, ast.While, ast.Try, ast.With)):
+            raise ValueError(f"Statement not allowed: {type(stmt).__name__}")
+        if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
+            _call_allowed(stmt.value, variables, output_lines)
+            continue
+        if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
+            value = _call_allowed(stmt.value, variables, output_lines) if isinstance(stmt.value, ast.Call) else _literal_value(stmt.value, variables)
+            variables[stmt.targets[0].id] = value
+            continue
+        raise ValueError(f"Statement not allowed: {type(stmt).__name__}")
+
 
 def set_wallpaper(image_path: str) -> str:
     """Sets desktop wallpaper from a local image path."""
@@ -191,7 +241,8 @@ def set_wallpaper_from_web(url: str) -> str:
     try:
         import urllib.request
         suffix = Path(url.split("?")[0]).suffix or ".jpg"
-        tmp    = Path(tempfile.mktemp(suffix=suffix))
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
+            tmp = Path(tmp_file.name)
         urllib.request.urlretrieve(url, str(tmp))
         result = set_wallpaper(str(tmp))
         return result

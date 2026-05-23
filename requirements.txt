@@ -1,5 +1,5 @@
 # Kree AI — Python Dependencies
-# Pin versions for reproducible builds.
+# Minimum supported versions. Use a lockfile or constraints file for release builds.
 # Run: pip install -r requirements.txt
 
 # ── Core AI ───────────────────────────────────────────

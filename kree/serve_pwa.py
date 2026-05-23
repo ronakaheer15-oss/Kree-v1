@@ -18,6 +18,7 @@ PWA_DIR = BASE_DIR / "pwa"
 TOKEN_FILE = CONFIG_DIR / "pwa_token.json"
 
 DEFAULT_PORT = 8765
+TOKEN_TTL_SECONDS = 30 * 24 * 3600
 
 
 def get_local_ip():
@@ -60,7 +61,7 @@ def load_or_create_token():
     except Exception:
         pass
 
-    # Generate new token with 24-hour expiration
+    # Generate a new token with a 30-day expiration.
     return reset_token()
 
 
@@ -68,7 +69,7 @@ def reset_token():
     """Generate a new token, invalidating all existing connected devices."""
     import time
     token = secrets.token_urlsafe(32)
-    expires = time.time() + (24 * 3600)  # 24 hours
+    expires = time.time() + TOKEN_TTL_SECONDS
     
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     TOKEN_FILE.write_text(

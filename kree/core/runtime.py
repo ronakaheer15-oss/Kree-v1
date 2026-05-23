@@ -26,11 +26,11 @@ def _get_bundle_dir() -> Path:
     openwakeword models, stitch dashboard HTML, etc.).
 
     - Frozen: sys._MEIPASS  (PyInstaller's temp extraction folder)
-    - Dev:    project root   (kree/core/runtime.py → parent.parent = project root)
+    - Dev:    project root   (kree/core/runtime.py -> parent.parent.parent)
     """
     if _is_frozen() and hasattr(sys, "_MEIPASS"):
         return Path(sys._MEIPASS)
-    return Path(__file__).resolve().parent.parent
+    return Path(__file__).resolve().parent.parent.parent
 
 
 def _get_exe_dir() -> Path:
@@ -39,11 +39,11 @@ def _get_exe_dir() -> Path:
     Use this for *writable* paths that should persist (configs, logs).
 
     - Frozen: directory containing Kree AI.exe
-    - Dev:    project root   (kree/core/runtime.py → parent.parent = project root)
+    - Dev:    project root   (kree/core/runtime.py -> parent.parent.parent)
     """
     if _is_frozen():
         return Path(sys.executable).parent
-    return Path(__file__).resolve().parent.parent
+    return Path(__file__).resolve().parent.parent.parent
 
 
 def _get_app_data_dir() -> Path:
@@ -52,13 +52,20 @@ def _get_app_data_dir() -> Path:
     Uses %LOCALAPPDATA%/Kree AI on Windows.
     Falls back to EXE_DIR if LOCALAPPDATA is missing.
     """
+    candidates = []
     base = os.environ.get("LOCALAPPDATA")
     if base:
-        p = Path(base) / "Kree AI"
-    else:
-        p = _get_exe_dir() / "data"
-    p.mkdir(parents=True, exist_ok=True)
-    return p
+        candidates.append(Path(base) / "Kree AI")
+    candidates.append(_get_exe_dir() / "data")
+
+    for path in candidates:
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            return path
+        except OSError:
+            continue
+
+    return _get_exe_dir()
 
 
 # ── Public constants ─────────────────────────────────────────────────────────

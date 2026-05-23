@@ -24,6 +24,133 @@ class RateLimiter:
         return True
 
 _ws_limiter = RateLimiter(max_calls=250, period=60) # Allow 15 websocket commands per minute
+AUTH_TIMEOUT_SECONDS = 5.0
+MAX_WS_PAYLOAD_BYTES = 16 * 1024 * 1024
+
+
+def _validate_pwa_token(client_token: str, token_file) -> bool:
+    """Return True only when client_token matches a stored, non-expired token.
+
+    A missing or unreadable token file always denies access — never grants it.
+    """
+    from pathlib import Path
+    token_file = Path(token_file)
+
+    if not token_file.exists():
+        return False
+
+    try:
+        data = json.loads(token_file.read_text(encoding="utf-8"))
+        valid_token = data.get("token", "")
+        token_expires = data.get("expires", 0)
+    except Exception:
+        return False
+
+    if not valid_token or not client_token:
+        return False
+
+    if client_token != valid_token:
+        return False
+
+    if token_expires > 0 and time.time() > token_expires:
+        logging.warning("[MOBILE BRIDGE] Token Expired")
+        return False
+
+    return True
+
+
+def _extract_authorization_token(header_value: str) -> str:
+    header_value = (header_value or "").strip()
+    if header_value.lower().startswith("bearer "):
+        return header_value[7:].strip()
+    return header_value
+
+
+def _get_pwa_token_file():
+    from kree.core.runtime import CONFIG_DIR
+    return CONFIG_DIR / "pwa_token.json"
+
+
+def _validate_pin_token(client_token: str) -> bool:
+    if ":" not in client_token:
+        return False
+
+    try:
+        handle, pin = client_token.split(":", 1)
+        from kree.core.auth_manager import AuthManager
+        result = AuthManager.sign_in_user(handle, pin)
+        if result.get("ok"):
+            return True
+
+        result2 = (
+            AuthManager.verify_user_pin(result.get("user", {}).get("user_id", ""), pin)
+            if result.get("user") else {"ok": False}
+        )
+        return bool(result2.get("ok", False))
+    except Exception:
+        return False
+
+
+def _authenticate_mobile_token(client_token: str, token_file=None) -> bool:
+    client_token = (client_token or "").strip()
+    if not client_token:
+        return False
+
+    if _validate_pin_token(client_token):
+        return True
+
+    return _validate_pwa_token(client_token, token_file or _get_pwa_token_file())
+
+
+def _server_ws_frame(opcode: int, payload: bytes = b"") -> bytes:
+    frame = bytearray([0x80 | (opcode & 0x0f)])
+    length = len(payload)
+    if length < 126:
+        frame.append(length)
+    elif length < 65536:
+        frame.append(126)
+        frame.extend(length.to_bytes(2, byteorder="big"))
+    else:
+        frame.append(127)
+        frame.extend(length.to_bytes(8, byteorder="big"))
+    frame.extend(payload)
+    return bytes(frame)
+
+
+def _close_frame(code: int = 1008, reason: str = "Authentication failed") -> bytes:
+    reason_bytes = reason.encode("utf-8")[:123]
+    return _server_ws_frame(0x8, code.to_bytes(2, "big") + reason_bytes)
+
+
+async def _read_client_ws_frame(reader: asyncio.StreamReader) -> tuple[int, bytes]:
+    header = await reader.readexactly(2)
+    b1, b2 = header
+
+    opcode = b1 & 0x0f
+    is_masked = b2 & 0x80
+    payload_len = b2 & 0x7f
+
+    if not is_masked:
+        raise ValueError("Client WebSocket frames must be masked.")
+
+    if payload_len == 126:
+        ext = await reader.readexactly(2)
+        payload_len = int.from_bytes(ext, "big")
+    elif payload_len == 127:
+        ext = await reader.readexactly(8)
+        payload_len = int.from_bytes(ext, "big")
+
+    if payload_len > MAX_WS_PAYLOAD_BYTES:
+        raise ValueError("WebSocket payload too large.")
+
+    masking_key = await reader.readexactly(4)
+    masked_data = await reader.readexactly(payload_len)
+
+    unmasked_data = bytearray(payload_len)
+    for i in range(payload_len):
+        unmasked_data[i] = masked_data[i] ^ masking_key[i % 4]
+
+    return opcode, bytes(unmasked_data)
 
 class KreeMobileBridge:
     def __init__(self, port=8443, on_command_callback=None, on_connect_callback=None):
@@ -57,19 +184,7 @@ class KreeMobileBridge:
         if not self.clients:
             return
         payload = json.dumps(message)
-        payload_bytes = payload.encode('utf-8')
-        length = len(payload_bytes)
-        # Construct unmasked websocket frame (server->client)
-        frame = bytearray([0x81]) # FIN + Text
-        if length < 126:
-            frame.append(length)
-        elif length < 65536:
-            frame.append(126)
-            frame.extend(length.to_bytes(2, byteorder='big'))
-        else:
-            frame.append(127)
-            frame.extend(length.to_bytes(8, byteorder='big'))
-        frame.extend(payload_bytes)
+        frame = _server_ws_frame(0x1, payload.encode('utf-8'))
         
         dead_clients = set()
         for writer in list(self.clients):
@@ -87,6 +202,35 @@ class KreeMobileBridge:
                 writer.close()
             except Exception:
                 pass
+
+    async def _authenticate_first_frame(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, token_file) -> bool:
+        deadline = time.monotonic() + AUTH_TIMEOUT_SECONDS
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+
+            opcode, payload = await asyncio.wait_for(_read_client_ws_frame(reader), timeout=remaining)
+            if opcode == 0x8: # CLOSE
+                return False
+            if opcode == 0x9: # PING
+                writer.write(_server_ws_frame(0xA, payload))
+                await writer.drain()
+                continue
+            if opcode == 0xA: # PONG
+                continue
+            if opcode != 0x1: # first meaningful frame must be text auth
+                return False
+
+            try:
+                data = json.loads(payload.decode("utf-8"))
+            except Exception:
+                return False
+
+            if data.get("type") != "auth":
+                return False
+
+            return _authenticate_mobile_token(str(data.get("token", "")), token_file)
 
     async def handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         try:
@@ -122,62 +266,13 @@ class KreeMobileBridge:
                 writer.close()
                 return
 
-            # ── V4: Authenticate via PIN (handle:pin/token) strictly via Header ──
-            client_token = headers.get('authorization', '').replace('Bearer ', '').strip()
+            # Header auth is used by native clients. Browser clients authenticate
+            # with the first WebSocket message after the upgrade.
+            token_file = _get_pwa_token_file()
+            client_token = _extract_authorization_token(headers.get('authorization', ''))
+            auth_passed = _authenticate_mobile_token(client_token, token_file) if client_token else False
 
-            auth_passed = False
-            import pathlib
-            import sys
-            import time
-
-            # Method 1: V4 PIN-based auth (token format: "handle:pin")
-            if ":" in client_token:
-                try:
-                    handle, pin = client_token.split(":", 1)
-                    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-                    from kree.core.auth_manager import AuthManager
-                    # Find user by handle and verify PIN
-                    result = AuthManager.sign_in_user(handle, pin)
-                    if result.get("ok"):
-                        auth_passed = True
-                    else:
-                        # Try as handle + PIN (not password)
-                        result2 = AuthManager.verify_user_pin(
-                            result.get("user", {}).get("user_id", ""), pin
-                        ) if result.get("user") else {"ok": False}
-                        auth_passed = result2.get("ok", False)
-                except Exception:
-                    auth_passed = False
-
-            # Method 2: Dynamic Rotating Token
-            if not auth_passed:
-                def _get_config_dir():
-                    if getattr(sys, 'frozen', False):
-                        return pathlib.Path(sys.executable).parent / 'config'
-                    return pathlib.Path(__file__).resolve().parent / 'config'
-                
-                token_file = _get_config_dir() / "pwa_token.json"
-                valid_token = ""
-                token_expires = 0
-                try:
-                    if token_file.exists():
-                        d = json.loads(token_file.read_text(encoding="utf-8"))
-                        valid_token = d.get("token", "")
-                        token_expires = d.get("expires", 0)
-                except Exception:
-                    pass
-
-                if valid_token and client_token == valid_token:
-                    # Token validity Check
-                    if time.time() > token_expires and token_expires > 0:
-                        logging.warning("[MOBILE BRIDGE] Token Expired")
-                    else:
-                        auth_passed = True
-                elif not valid_token:
-                    # No token file = no auth required (first boot)
-                    auth_passed = True
-
-            if not auth_passed:
+            if client_token and not auth_passed:
                 logging.warning(f"[MOBILE BRIDGE] Auth failed for {writer.get_extra_info('peername')}")
                 writer.write(b"HTTP/1.1 403 Forbidden\r\n\r\n")
                 await writer.drain()
@@ -203,6 +298,16 @@ class KreeMobileBridge:
             )
             writer.write(response.encode('utf-8'))
             await writer.drain()
+
+            if not auth_passed:
+                auth_passed = await self._authenticate_first_frame(reader, writer, token_file)
+
+            if not auth_passed:
+                logging.warning(f"[MOBILE BRIDGE] Auth failed for {writer.get_extra_info('peername')}")
+                writer.write(_close_frame())
+                await writer.drain()
+                writer.close()
+                return
             
             self.clients.add(writer)
             if self.on_connect_callback:
@@ -211,47 +316,13 @@ class KreeMobileBridge:
 
             # 4. Message Loop (read incoming masked frames)
             while True:
-                header = await reader.readexactly(2)
-                b1, b2 = header
-                
-                b1 & 0x80
-                opcode = b1 & 0x0f
-                is_masked = b2 & 0x80
-                payload_len = b2 & 0x7f
+                opcode, unmasked_data = await _read_client_ws_frame(reader)
                 
                 if opcode == 0x8: # CLOSE
                     break
-                    
-                if not is_masked:
-                    break # Client must mask frames
-                    
-                if payload_len == 126:
-                    ext = await reader.readexactly(2)
-                    payload_len = int.from_bytes(ext, 'big')
-                elif payload_len == 127:
-                    ext = await reader.readexactly(8)
-                    payload_len = int.from_bytes(ext, 'big')
-                    
-                masking_key = await reader.readexactly(4)
-                masked_data = await reader.readexactly(payload_len)
-                
-                # Unmask
-                unmasked_data = bytearray(payload_len)
-                for i in range(payload_len):
-                    unmasked_data[i] = masked_data[i] ^ masking_key[i % 4]
                 
                 if opcode == 0x9: # PING
-                    resp = bytearray([0x8A]) # FIN + PONG
-                    if payload_len < 126:
-                        resp.append(payload_len)
-                    elif payload_len < 65536:
-                        resp.append(126)
-                        resp.extend(payload_len.to_bytes(2, 'big'))
-                    else:
-                        resp.append(127)
-                        resp.extend(payload_len.to_bytes(8, 'big'))
-                    resp.extend(unmasked_data)
-                    writer.write(resp)
+                    writer.write(_server_ws_frame(0xA, unmasked_data))
                     await writer.drain()
                     continue
                 elif opcode == 0xA: # PONG
@@ -260,7 +331,7 @@ class KreeMobileBridge:
                 if opcode == 0x2: # binary frame — mobile mic audio
                     if hasattr(self, 'on_audio_callback') and self.on_audio_callback:
                         try:
-                            self.on_audio_callback(bytes(unmasked_data))
+                            self.on_audio_callback(unmasked_data)
                         except Exception as e:
                             logging.error(f"[MOBILE BRIDGE] Audio callback error: {e}")
                     continue

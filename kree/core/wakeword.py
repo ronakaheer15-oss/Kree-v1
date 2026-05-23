@@ -18,6 +18,7 @@ Config:
 import threading
 import time
 import os
+import importlib.util
 import numpy as np
 from pathlib import Path
 
@@ -33,11 +34,16 @@ VOICEPRINT_FILE = VOICEPRINT_DIR / "owner.npy"
 CUSTOM_ONNX_PATH = BUNDLE_DIR / "assets" / "models" / "hey_kree.onnx"
 
 # In frozen mode, openwakeword resources are bundled at _MEIPASS/openwakeword/resources
-# In dev mode, they're in the .venv site-packages
+# In dev mode, discover them from the installed openwakeword package.
 if getattr(_sys, "frozen", False):
     VENV_MODEL_DIR = BUNDLE_DIR / "openwakeword" / "resources" / "models"
 else:
-    VENV_MODEL_DIR = PROJECT_ROOT.parent / ".venv" / "Lib" / "site-packages" / "openwakeword" / "resources" / "models"
+    _oww_spec = importlib.util.find_spec("openwakeword")
+    VENV_MODEL_DIR = (
+        Path(_oww_spec.origin).resolve().parent / "resources" / "models"
+        if _oww_spec and _oww_spec.origin
+        else PROJECT_ROOT / "openwakeword" / "resources" / "models"
+    )
 
 DEFAULT_WAKEWORD_MODELS = (
     "hey_jarvis",
@@ -312,8 +318,6 @@ class WakeWordDetector:
         while self.is_running:
             try:
                 # ── CPU Yield Optimization ──
-                time.sleep(0.005)
-
                 audio = stream.read(FRAMES_PER_BUFFER, exception_on_overflow=False)
                 audio_np = np.frombuffer(audio, dtype=np.int16)
                 

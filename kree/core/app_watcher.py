@@ -1,6 +1,8 @@
 import asyncio
 import psutil
 
+from kree.core.live_prompts import app_trigger_prompt
+
 async def watch_processes(live_session=None):
     """
     Background loop that polls psutil.process_iter() every 5-10s.
@@ -52,7 +54,7 @@ async def watch_processes(live_session=None):
                     print(f"[JARVIS] 👁️ App Detected: {app_name}. Firing trigger!")
                     try:
                         await live_session.send(
-                            input=f"[SYSTEM OVERRIDE] The user just manually opened {app_name}. Say the following line naturally out loud: '{trigger_speech}'"
+                            input=app_trigger_prompt(app_name, trigger_speech)
                         )
                     except Exception:
                         pass

@@ -10,10 +10,10 @@ from typing import Any
 
 from kree.memory.config_manager import CONFIG_DIR, ensure_config_dir
 
-from core import vault
+from kree.core import vault
 
 
-DEFAULT_BOOTSTRAP_PIN = "143211"
+AUTH_HASH_ITERATIONS = 200_000
 AUTH_FILE = CONFIG_DIR / "user_auth.json"
 USER_SECRETS_DIR = CONFIG_DIR / "user_secrets"
 LEGACY_API_FILE = CONFIG_DIR / "api_keys.json"
@@ -59,7 +59,9 @@ def _load_state() -> dict[str, Any]:
 
 def _save_state(state: dict[str, Any]) -> None:
     _ensure_storage()
-    AUTH_FILE.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    tmp = AUTH_FILE.with_suffix(f"{AUTH_FILE.suffix}.tmp")
+    tmp.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    tmp.replace(AUTH_FILE)
 
 
 def _new_salt() -> str:
@@ -67,8 +69,12 @@ def _new_salt() -> str:
 
 
 def _hash_value(value: str, salt: str) -> str:
-    payload = f"{salt}::{value}".encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        value.encode("utf-8"),
+        salt.encode("ascii"),
+        AUTH_HASH_ITERATIONS,
+    ).hex()
 
 
 def _public_user(user: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -159,7 +165,7 @@ def get_auth_state() -> dict[str, Any]:
         "users": list_users(),
         "active_user_id": state.get("active_user_id"),
         "active_user": active_user,
-        "bootstrap_pin": DEFAULT_BOOTSTRAP_PIN,
+        "bootstrap_pin": None,
         "needs_sign_in": not bool(active_user),
         "needs_pin_setup": bool(active_user and active_user.get("pin_requires_change")),
         "needs_api_key": bool(active_user and not active_user.get("has_api_key")),
@@ -191,7 +197,7 @@ def create_user(handle: str, password: str, email: str = "", display_name: str =
         "password_salt": password_salt,
         "password_hash": _hash_value(password_clean, password_salt),
         "pin_salt": pin_salt,
-        "pin_hash": _hash_value(DEFAULT_BOOTSTRAP_PIN, pin_salt),
+        "pin_hash": "",
         "pin_requires_change": True,
         "created_at": _now(),
         "last_login_at": _now(),
@@ -318,7 +324,6 @@ def save_user_api_key(user_id: str, api_key: str) -> dict[str, Any]:
 
     api_path = get_user_secret_path(user_id)
     vault.save_api_key(api_path, api_key)
-    vault.save_api_key(LEGACY_API_FILE, api_key)
     user["updated_at"] = _now()
     _save_state(state)
     return {

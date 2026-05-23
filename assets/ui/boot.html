@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Kree AI</title>
+    <style>
+        html, body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: radial-gradient(circle at 50% 35%, #0f172a 0%, #05070d 60%, #02030a 100%);
+            color: #d1d5db;
+            font-family: Segoe UI, Arial, sans-serif;
+        }
+        .wrap {
+            width: 100%;
+            height: 100%;
+            display: grid;
+            place-items: center;
+        }
+        .card {
+            text-align: center;
+            padding: 24px 28px;
+            border: 1px solid rgba(255,255,255,.08);
+            border-radius: 14px;
+            background: rgba(8, 12, 22, .55);
+            box-shadow: 0 12px 40px rgba(0,0,0,.35);
+            min-width: 300px;
+        }
+        .dot {
+            width: 10px;
+            height: 10px;
+            margin: 0 auto 10px;
+            border-radius: 999px;
+            background: #00dc82;
+            box-shadow: 0 0 14px rgba(0,220,130,.7);
+            animation: pulse 1.15s ease-in-out infinite;
+        }
+        .title {
+            font-weight: 700;
+            font-size: 14px;
+            letter-spacing: .18em;
+            text-transform: uppercase;
+            color: #00dc82;
+        }
+        .sub {
+            margin-top: 8px;
+            font-size: 12px;
+            letter-spacing: .08em;
+            color: #94a3b8;
+            text-transform: uppercase;
+        }
+        @keyframes pulse {
+            0%,100% { transform: scale(1); opacity: .75; }
+            50% { transform: scale(1.3); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <div class="card">
+            <div class="dot"></div>
+            <div class="title">Kree AI</div>
+            <div class="sub">Initializing Core Systems</div>
+        </div>
+    </div>
+</body>
+</html>

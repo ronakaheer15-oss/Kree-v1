@@ -3,6 +3,8 @@ import json
 import base64
 import subprocess
 import hashlib
+import hmac
+import secrets
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -38,12 +40,11 @@ def _get_fernet():
 
 def save_api_key(api_file_path: Path, api_key: str):
     f = _get_fernet()
-    # Graceful fallback to plaintext JSON if cryptography is missing
     if f is None:
-        os.makedirs(api_file_path.parent, exist_ok=True)
-        with open(api_file_path, "w", encoding="utf-8") as file:
-            json.dump({"gemini_api_key": api_key}, file, indent=4)
-        return
+        raise RuntimeError(
+            "Cannot save API key: the 'cryptography' library is not installed. "
+            "Run `pip install cryptography` to enable encrypted vault storage."
+        )
 
     encrypted = f.encrypt(api_key.encode('utf-8'))
     os.makedirs(api_file_path.parent, exist_ok=True)
@@ -91,32 +92,58 @@ def _get_unlock_trust_path() -> Path:
     base = Path(os.environ.get('APPDATA', os.path.expanduser('~'))) / ".kree" / "config"
     return base / "trusted_unlock.json"
 
+
+MASTER_PIN_ITERATIONS = 200_000
+
+
+def _hash_master_pin(pin: str, salt: str | None = None) -> str:
+    salt = salt or secrets.token_hex(16)
+    machine_id = get_machine_id()
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        f"{pin}::{machine_id}".encode("utf-8"),
+        salt.encode("ascii"),
+        MASTER_PIN_ITERATIONS,
+    ).hex()
+    return f"pbkdf2_sha256${MASTER_PIN_ITERATIONS}${salt}${digest}"
+
+
+def _verify_master_pin_hash(pin: str, saved_hash: str) -> bool:
+    if saved_hash.startswith("pbkdf2_sha256$"):
+        try:
+            _, iterations_text, salt, expected = saved_hash.split("$", 3)
+            machine_id = get_machine_id()
+            actual = hashlib.pbkdf2_hmac(
+                "sha256",
+                f"{pin}::{machine_id}".encode("utf-8"),
+                salt.encode("ascii"),
+                int(iterations_text),
+            ).hex()
+            return hmac.compare_digest(actual, expected)
+        except Exception:
+            return False
+
+    hw_id = get_machine_id()
+    legacy = hashlib.sha256(f"{pin}::{hw_id}".encode("utf-8")).hexdigest()
+    return hmac.compare_digest(legacy, saved_hash)
+
 def is_master_pin_set() -> bool:
     return _get_master_pin_path().exists()
 
 def setup_master_pin(pin: str):
-    hw_id = get_machine_id()
-    # Salt the PIN with hardware ID and hash it
-    salted_pin = f"{pin}::{hw_id}".encode('utf-8')
-    pin_hash = hashlib.sha256(salted_pin).hexdigest()
-    
     path = _get_master_pin_path()
     os.makedirs(path.parent, exist_ok=True)
     with open(path, "w", encoding="utf-8") as file:
-        file.write(pin_hash)
+        file.write(_hash_master_pin(pin))
 
 def verify_master_pin(pin: str) -> bool:
     if not is_master_pin_set():
         return False
         
-    hw_id = get_machine_id()
-    salted_pin = f"{pin}::{hw_id}".encode('utf-8')
-    pin_hash = hashlib.sha256(salted_pin).hexdigest()
-    
     try:
         with open(_get_master_pin_path(), "r", encoding="utf-8") as file:
             saved_hash = file.read().strip()
-        return pin_hash == saved_hash
+        return _verify_master_pin_hash(pin, saved_hash)
     except Exception:
         return False
 
@@ -193,7 +220,10 @@ def clear_unlock_trust() -> None:
 def encrypt_data(data: str) -> bytes:
     f = _get_fernet()
     if f is None:
-        return data.encode('utf-8')
+        raise RuntimeError(
+            "Cannot encrypt data: the 'cryptography' library is not installed. "
+            "Run `pip install cryptography` to enable encrypted vault storage."
+        )
     return f.encrypt(data.encode('utf-8'))
 
 def decrypt_data(raw_data: bytes) -> str:
@@ -203,10 +233,12 @@ def decrypt_data(raw_data: bytes) -> str:
         
     f = _get_fernet()
     if f is None:
-        return raw_data.decode('utf-8', errors='ignore')
+        raise RuntimeError(
+            "Cannot decrypt data: the 'cryptography' library is not installed. "
+            "Run `pip install cryptography` to enable encrypted vault storage."
+        )
         
     try:
         return f.decrypt(raw_data).decode('utf-8')
     except Exception:
-        # Fallback if somehow it's plaintext but not JSON
-        return raw_data.decode('utf-8', errors='ignore')
+        raise ValueError("Encrypted vault payload could not be decrypted.")

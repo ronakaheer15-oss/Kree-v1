@@ -62,7 +62,7 @@ echo SUCCESS: Kree AI has been built.
 
 :: ── Release Bundle ───────────────────────────────────────────────────────
 echo [5/5] Creating release bundle...
-python "%KREE_ROOT%build_release.py"
+python "%KREE_ROOT%scripts\build_release.py"
 if errorlevel 1 goto build_failed
 
 echo.
