@@ -30,96 +30,50 @@ BASE_DIR = PROJECT_ROOT
 def get_exe_dir():
     if getattr(sys, "frozen", False):
         return Path(sys.executable).parent
-    return Path(__file__).resolve().parent
+    return PROJECT_ROOT
 
 EXE_DIR = get_exe_dir()
 CONFIG_DIR = EXE_DIR / "config"
 API_FILE   = CONFIG_DIR / "api_keys.json"
 
-# _STITCH assets are bundled inside the app
-if getattr(sys, "frozen", False):
-    # In bundle, stitch is at root
-    _STITCH = BASE_DIR / "stitch_core_system_dashboard"
-else:
-    # In dev, stitch is a peer to the project folder
-    _STITCH = BASE_DIR.parent / "stitch_core_system_dashboard" / "stitch_core_system_dashboard"
+def _resolve_stitch_dir() -> Path:
+    env_path = os.environ.get("KREE_STITCH_DIR", "").strip()
+    candidates = []
+    if env_path:
+        candidates.append(Path(env_path))
+    candidates.extend([
+        BASE_DIR / "stitch_core_system_dashboard",
+        BASE_DIR / "stitch_core_system_dashboard" / "stitch_core_system_dashboard",
+        BASE_DIR.parent / "stitch_core_system_dashboard",
+        BASE_DIR.parent / "stitch_core_system_dashboard" / "stitch_core_system_dashboard",
+    ])
+
+    for candidate in candidates:
+        if (candidate / "core_system_dashboard_1" / "code.html").exists():
+            return candidate
+    return candidates[0]
+
+
+_STITCH = _resolve_stitch_dir()
 
 _LIGHT_HTML  = _STITCH / "core_system_dashboard_1" / "code.html"
 _DARK_HTML   = _STITCH / "core_system_dashboard_2" / "code.html"
 _WIDGET_HTML = _STITCH / "minimized_control_widget" / "code.html"
 
-_BOOT_HTML = """
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Kree AI</title>
-    <style>
-        html, body {
-            margin: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            background: radial-gradient(circle at 50% 35%, #0f172a 0%, #05070d 60%, #02030a 100%);
-            color: #d1d5db;
-            font-family: Segoe UI, Arial, sans-serif;
-        }
-        .wrap {
-            width: 100%;
-            height: 100%;
-            display: grid;
-            place-items: center;
-        }
-        .card {
-            text-align: center;
-            padding: 24px 28px;
-            border: 1px solid rgba(255,255,255,.08);
-            border-radius: 14px;
-            background: rgba(8, 12, 22, .55);
-            box-shadow: 0 12px 40px rgba(0,0,0,.35);
-            min-width: 300px;
-        }
-        .dot {
-            width: 10px;
-            height: 10px;
-            margin: 0 auto 10px;
-            border-radius: 999px;
-            background: #00dc82;
-            box-shadow: 0 0 14px rgba(0,220,130,.7);
-            animation: pulse 1.15s ease-in-out infinite;
-        }
-        .title {
-            font-weight: 700;
-            font-size: 14px;
-            letter-spacing: .18em;
-            text-transform: uppercase;
-            color: #00dc82;
-        }
-        .sub {
-            margin-top: 8px;
-            font-size: 12px;
-            letter-spacing: .08em;
-            color: #94a3b8;
-            text-transform: uppercase;
-        }
-        @keyframes pulse {
-            0%,100% { transform: scale(1); opacity: .75; }
-            50% { transform: scale(1.3); opacity: 1; }
-        }
-    </style>
-</head>
-<body>
-    <div class=\"wrap\">
-        <div class=\"card\">
-            <div class=\"dot\"></div>
-            <div class=\"title\">Kree AI</div>
-            <div class=\"sub\">Initializing Core Systems</div>
-        </div>
-    </div>
-</body>
-</html>
-"""
+_UI_ASSET_DIR = BASE_DIR / "assets" / "ui"
+
+
+def _load_ui_asset(filename: str, fallback: str = "") -> str:
+    try:
+        return (_UI_ASSET_DIR / filename).read_text(encoding="utf-8")
+    except OSError:
+        return fallback
+
+
+_BOOT_HTML = _load_ui_asset(
+    "boot.html",
+    "<!doctype html><html><body><main>Kree AI initializing...</main></body></html>",
+)
 
 try:
     from kree.core.security_ui import LOCK_SCREEN_JS, SETTINGS_MODAL_JS # type: ignore[import]
@@ -149,70 +103,7 @@ try:
 except ImportError:
     API_SETUP_JS = ""
 
-AUTO_UPDATE_POPUP_JS = """
-setTimeout(() => {
-    window.pywebview.api.check_for_updates().then((res) => {
-        if(res && res.update_available) {
-            const modDiv = document.createElement('div');
-            modDiv.id = 'kree-auto-update-modal';
-            modDiv.innerHTML = `
-                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" id="auto-update-bg">
-                    <div class="bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-6 max-w-sm w-full mx-4 relative transform transition-all">
-                        <div class="flex items-center space-x-3 mb-4">
-                            <i class="material-icons text-[#00DC82] text-3xl">system_update</i>
-                            <h2 class="text-xl font-bold text-white tracking-wide">Update Available</h2>
-                        </div>
-                        <p class="text-zinc-400 text-sm mb-5 leading-relaxed">
-                            A new version of Kree AI (v${res.latest_version}) is available. Do you want to download and install it now?
-                        </p>
-                        <div class="bg-black/30 rounded-lg p-3 mb-6 text-xs text-zinc-500 font-mono border border-black/50">
-                            Current: ${res.installed_version} &rarr; Latest: ${res.latest_version}
-                        </div>
-                        <div class="flex justify-end space-x-3 mt-6">
-                            <button id="btn-update-later" class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm rounded-lg transition-colors font-medium">
-                                Later
-                            </button>
-                            <button id="btn-update-now" class="px-5 py-2 bg-[#00DC82] hover:bg-[#00c978] text-black text-sm rounded-lg transition-colors font-bold shadow-lg shadow-[#00DC82]/20">
-                                Download Now
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modDiv);
-
-            document.getElementById('btn-update-later').onclick = () => {
-                modDiv.remove();
-            };
-            
-            const btnNow = document.getElementById('btn-update-now');
-            btnNow.onclick = () => {
-                btnNow.textContent = "Downloading...";
-                btnNow.disabled = true;
-                btnNow.classList.replace('bg-[#00DC82]', 'bg-zinc-700');
-                btnNow.classList.remove('text-black');
-                btnNow.classList.add('text-zinc-400', 'cursor-not-allowed', 'shadow-none');
-                
-                window.pywebview.api.download_update().then((dlRes) => {
-                    if(dlRes && dlRes.status && dlRes.status.includes('downloaded')) {
-                        btnNow.textContent = "Restart to Apply";
-                        btnNow.classList.replace('bg-zinc-700', 'bg-[#00DC82]');
-                        btnNow.classList.remove('text-zinc-400', 'cursor-not-allowed');
-                        btnNow.classList.add('text-black', 'shadow-lg');
-                        btnNow.disabled = false;
-                        btnNow.onclick = () => {
-                            window.pywebview.api.apply_update();
-                        };
-                    } else {
-                        btnNow.textContent = "Download Failed";
-                        setTimeout(() => modDiv.remove(), 2000);
-                    }
-                });
-            };
-        }
-    });
-}, 3000);
-"""
+AUTO_UPDATE_POPUP_JS = _load_ui_asset("auto_update_popup.js")
 
 SYSTEM_NAME = "Kree"
 MAX_CHAT_HISTORY = 220
