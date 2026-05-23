@@ -41,3 +41,26 @@ def test_encrypt_data_raises_when_cryptography_missing():
     with patch.object(vault, "Fernet", None):
         with pytest.raises(RuntimeError, match="cryptography"):
             vault.encrypt_data("sensitive data")
+
+
+def test_decrypt_data_raises_when_cryptography_missing_for_non_json_payload():
+    from kree.core import vault
+
+    with patch.object(vault, "Fernet", None):
+        with pytest.raises(RuntimeError, match="cryptography"):
+            vault.decrypt_data(b"encrypted-secret")
+
+
+def test_master_pin_uses_pbkdf2_and_verifies(tmp_path, monkeypatch):
+    from kree.core import vault
+
+    pin_path = tmp_path / "master_pin.hash"
+    monkeypatch.setattr(vault, "_get_master_pin_path", lambda: pin_path)
+    monkeypatch.setattr(vault, "get_machine_id", lambda: "machine")
+
+    vault.setup_master_pin("123456")
+    stored = pin_path.read_text(encoding="utf-8")
+
+    assert stored.startswith("pbkdf2_sha256$")
+    assert vault.verify_master_pin("123456") is True
+    assert vault.verify_master_pin("000000") is False
