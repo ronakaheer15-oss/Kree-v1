@@ -378,13 +378,15 @@ AUTH_FLOW_JS = """
 
   document.getElementById('signin-btn').addEventListener('click', function(){
     var identifier = document.getElementById('signin-identifier').value.trim();
-    var password = document.getElementById('signin-password').value;
+    var passwordEl = document.getElementById('signin-password');
+    var password = passwordEl.value;
     if (!identifier || !password) {
       setMessage('Enter your handle or email and password.', true);
       return;
     }
     setMessage('Signing in...');
     api('sign_in_user', identifier, password).then(function(result){
+      passwordEl.value = '';
       applyResult(result, 'auth');
     });
   });
@@ -393,20 +395,24 @@ AUTH_FLOW_JS = """
     var displayName = document.getElementById('signup-display').value.trim();
     var handle = document.getElementById('signup-handle').value.trim();
     var email = document.getElementById('signup-email').value.trim();
-    var password = document.getElementById('signup-password').value;
+    var passwordEl = document.getElementById('signup-password');
+    var password = passwordEl.value;
     if (!handle || !password) {
       setMessage('Choose a handle and password to create the account.', true);
       return;
     }
     setMessage('Creating account...');
     api('create_user', handle, password, email, displayName).then(function(result){
+      passwordEl.value = '';
       applyResult(result, 'pin_setup');
     });
   });
 
   document.getElementById('pin-btn').addEventListener('click', function(){
-    var pin = document.getElementById('pin-input').value.trim();
-    var confirmPin = document.getElementById('pin-confirm').classList.contains('hidden') ? pin : document.getElementById('pin-confirm').value.trim();
+    var pinEl = document.getElementById('pin-input');
+    var confirmPinEl = document.getElementById('pin-confirm');
+    var pin = pinEl.value.trim();
+    var confirmPin = confirmPinEl.classList.contains('hidden') ? pin : confirmPinEl.value.trim();
     if (!state.currentUserId) {
       setMessage('No active user session.', true);
       return;
@@ -415,7 +421,7 @@ AUTH_FLOW_JS = """
       setMessage('Enter a 6-digit PIN.', true);
       return;
     }
-    if (!document.getElementById('pin-confirm').classList.contains('hidden') && pin !== confirmPin) {
+    if (!confirmPinEl.classList.contains('hidden') && pin !== confirmPin) {
       setMessage('PINs do not match.', true);
       return;
     }
@@ -423,6 +429,8 @@ AUTH_FLOW_JS = """
     if (state.stage === 'pin_setup') {
       setMessage('Saving PIN...');
       api('set_user_pin', state.currentUserId, pin).then(function(result){
+        pinEl.value = '';
+        confirmPinEl.value = '';
         applyResult(result, 'api_setup');
       });
       return;
@@ -430,6 +438,8 @@ AUTH_FLOW_JS = """
 
     setMessage('Verifying PIN...');
     api('verify_user_pin', state.currentUserId, pin).then(function(result){
+      pinEl.value = '';
+      confirmPinEl.value = '';
       if (!result || result.ok === false) {
         setMessage((result && result.message) || 'Invalid PIN.', true);
         return;
@@ -443,7 +453,8 @@ AUTH_FLOW_JS = """
   });
 
   document.getElementById('api-btn').addEventListener('click', function(){
-    var key = document.getElementById('api-input').value.trim();
+    var keyEl = document.getElementById('api-input');
+    var key = keyEl.value.trim();
     if (!state.currentUserId) {
       setMessage('No active user session.', true);
       return;
@@ -454,6 +465,7 @@ AUTH_FLOW_JS = """
     }
     setMessage('Saving API key...');
     api('save_user_api_key', state.currentUserId, key).then(function(result){
+      keyEl.value = '';
       if (!result || result.ok === false) {
         setMessage((result && result.message) || 'Could not save API key.', true);
         return;

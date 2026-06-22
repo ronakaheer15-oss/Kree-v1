@@ -1,9 +1,10 @@
+import re
+
 BLOCKED_COMMANDS = [
     "delete system32",
     "format c:",
     "rm -rf",
     "sudo",
-    "admin",
     "mkfs",
     "del /s /q",
     "wipe"
@@ -19,8 +20,19 @@ def sanitize_command(text: str) -> tuple[str | None, str | None]:
         return text, None
         
     lower_text = text.lower()
+    
+    # Normalize: strip out quotes, backticks, backslashes and redundant spaces
+    normalized = re.sub(r'[\'"`\\]', '', lower_text)
+    normalized_clean = re.sub(r'\s+', ' ', normalized).strip()
+    normalized_no_spaces = normalized_clean.replace(" ", "")
+
     for blocked in BLOCKED_COMMANDS:
-        if blocked in lower_text:
+        blocked_clean = blocked.lower()
+        blocked_no_spaces = blocked_clean.replace(" ", "")
+        
+        if (blocked_clean in lower_text or 
+            blocked_clean in normalized_clean or 
+            blocked_no_spaces in normalized_no_spaces):
             return None, f"Dangerous command blocked: '{blocked}' is strictly prohibited by security permissions."
             
     return text, None

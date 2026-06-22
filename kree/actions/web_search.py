@@ -14,9 +14,8 @@ from typing import Any
 from kree.core import vault
 
 
-from kree._paths import PROJECT_ROOT
-BASE_DIR = PROJECT_ROOT
-API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
+from kree.core.runtime import CONFIG_DIR
+API_CONFIG_PATH = CONFIG_DIR / "api_keys.json"
 _CACHE_TTL_SEC = 180.0
 _SEARCH_CACHE: dict[tuple[str, str], tuple[float, str]] = {}
 
@@ -30,16 +29,7 @@ def _get_api_key() -> str:
     if api_key:
         return api_key
 
-    try:
-        with open(API_CONFIG_PATH, "r", encoding="utf-8") as file_handle:
-            data = json.load(file_handle)
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"Gemini API key not available: {exc}") from exc
-
-    api_key = str(data.get("gemini_api_key", "") or data.get("google_api_key", "")).strip()
-    if not api_key:
-        raise RuntimeError("Gemini API key missing from config/api_keys.json and GEMINI_API_KEY is not set.")
-    return api_key
+    raise RuntimeError("Gemini API key missing from config and GEMINI_API_KEY is not set.")
 
 
 def _is_current_events_query(query: str) -> bool:
@@ -97,10 +87,11 @@ def _extract_response_text(response: Any) -> str:
 
 def _gemini_search(query: str) -> str:
     from google import genai
+    from kree.core.version import MODEL_FLASH_LITE
 
     client = genai.Client(api_key=_get_api_key())
     response = client.models.generate_content(
-        model="gemini-2.5-flash-lite",
+        model=MODEL_FLASH_LITE,
         contents=query,
         config={"tools": [{"google_search": {}}]},
     )
@@ -212,6 +203,15 @@ def web_search(
 
     if not query and not items:
         return "Please provide a search query, sir."
+
+    # Open standard Google search page in browser window for user visibility
+    if query:
+        try:
+            import webbrowser
+            import urllib.parse
+            webbrowser.open(f"https://www.google.com/search?q={urllib.parse.quote(query)}")
+        except Exception as e:
+            print(f"[WebSearch] ⚠️ Failed to open search page in browser: {e}")
 
     if items and mode != "compare":
         mode = "compare"

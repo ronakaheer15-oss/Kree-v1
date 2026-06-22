@@ -29,14 +29,13 @@ except ImportError:
 
 _OS = platform.system() 
 
-from kree._paths import PROJECT_ROOT
-BASE_DIR = PROJECT_ROOT
-API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
+from kree.core.runtime import CONFIG_DIR
+API_CONFIG_PATH = CONFIG_DIR / "api_keys.json"
 
 import json
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    from kree.core import vault
+    return vault.load_api_key(API_CONFIG_PATH)
 
 
 def volume_up():
@@ -110,6 +109,46 @@ def close_app():
     if _OS == "Darwin":
         pyautogui.hotkey("command", "q")
     else:
+        try:
+            import ctypes
+            import os
+            import psutil
+            
+            hwnd = ctypes.windll.user32.GetForegroundWindow()
+            pid = ctypes.c_ulong()
+            ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            target_pid = pid.value
+            current_pid = os.getpid()
+            
+            is_kree_process = False
+            if target_pid == current_pid:
+                is_kree_process = True
+            else:
+                try:
+                    proc = psutil.Process(target_pid)
+                    proc_name = proc.name().lower()
+                    if "kree" in proc_name or "python" in proc_name or "webview" in proc_name:
+                        is_kree_process = True
+                    else:
+                        parent = proc.parent()
+                        while parent:
+                            if parent.pid == current_pid or "kree" in parent.name().lower() or "python" in parent.name().lower() or "webview" in parent.name().lower():
+                                is_kree_process = True
+                                break
+                            parent = parent.parent()
+                except Exception:
+                    pass
+            
+            length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
+            buff = ctypes.create_unicode_buffer(length + 1)
+            ctypes.windll.user32.GetWindowTextW(hwnd, buff, length + 1)
+            title = buff.value.lower()
+            
+            if is_kree_process or "kree" in title or "webview" in title or "pywebview" in title:
+                print(f"[Settings] 🛡️ Blocked attempt to close Kree application window (PID={target_pid}, Title='{title}')")
+                return
+        except Exception as e:
+            print(f"[Settings] Error in close_app protection: {e}")
         pyautogui.hotkey("alt", "f4")
 
 def close_window():
@@ -529,7 +568,8 @@ def _detect_action(description: str) -> dict:
     """
     import google.generativeai as genai
     genai.configure(api_key=_get_api_key())
-    model = genai.GenerativeModel("gemini-2.5-flash-lite")
+    from kree.core.version import MODEL_FLASH_LITE
+    model = genai.GenerativeModel(MODEL_FLASH_LITE)
 
     available = ", ".join(sorted(ACTION_MAP.keys())) + ", volume_set, type_text, write_on_screen, reload_n, press_key"
 
@@ -642,8 +682,42 @@ def computer_settings(
     if not action:
         return "No action could be determined, sir."
 
-    print(f"[Settings] ⚙️ Action: {action}  Value: {value}")
+    if action == "close_app":
+        app_name = None
+        desc_lower = description.lower()
+        if "close" in desc_lower:
+            app_name = desc_lower.split("close", 1)[1].strip()
+        elif "exit" in desc_lower:
+            app_name = desc_lower.split("exit", 1)[1].strip()
+        elif "quit" in desc_lower:
+            app_name = desc_lower.split("quit", 1)[1].strip()
+        elif "kill" in desc_lower:
+            app_name = desc_lower.split("kill", 1)[1].strip()
 
+        if app_name and app_name.endswith("app"):
+            app_name = app_name[:-3].strip()
+
+        if app_name:
+            import os
+            from kree.actions.open_app import _APP_ALIASES
+            resolved_exe = None
+            for alias_key, os_map in _APP_ALIASES.items():
+                if alias_key in app_name or app_name in alias_key:
+                    resolved_exe = os_map.get("Windows", "")
+                    break
+            
+            if not resolved_exe:
+                resolved_exe = f"{app_name}.exe" if not app_name.endswith(".exe") else app_name
+            else:
+                if not resolved_exe.lower().endswith(".exe"):
+                    resolved_exe = f"{resolved_exe}.exe"
+                    
+            print(f"[Settings] 🛑 Attempting to terminate process: {resolved_exe}")
+            try:
+                subprocess.run(["taskkill", "/f", "/im", resolved_exe], capture_output=True, timeout=5)
+                return f"Closed process {resolved_exe}."
+            except Exception as e:
+                print(f"[Settings] taskkill failed: {e}")
 
     if action == "volume_set":
         try:

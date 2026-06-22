@@ -2,7 +2,7 @@ import json
 import time
 import threading
 from datetime import datetime
-from kree._paths import PROJECT_ROOT
+from kree.core.runtime import MEMORY_DIR
 
 try:
     import psutil
@@ -18,31 +18,34 @@ class TriggerEngine:
         self.callback = callback
         self.running = False
         self._thread = None
+        self._lock = threading.RLock()
 
         # Path resolution
-        self.memory_path = PROJECT_ROOT / "memory" / "smart_triggers.json"
+        self.memory_path = MEMORY_DIR / "smart_triggers.json"
         
         self.triggers = []
         self._load_triggers()
         
     def _load_triggers(self):
-        if self.memory_path.exists():
-            try:
-                data = json.loads(self.memory_path.read_text(encoding="utf-8"))
-                self.triggers = data.get("triggers", [])
-            except Exception as e:
-                print(f"[TriggerEngine] Failed to load triggers: {e}")
-                self.triggers = []
+        with self._lock:
+            if self.memory_path.exists():
+                try:
+                    data = json.loads(self.memory_path.read_text(encoding="utf-8"))
+                    self.triggers = data.get("triggers", [])
+                except Exception as e:
+                    print(f"[TriggerEngine] Failed to load triggers: {e}")
+                    self.triggers = []
 
     def _save_triggers(self):
-        self.memory_path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            self.memory_path.write_text(
-                json.dumps({"triggers": self.triggers}, indent=4), 
-                encoding="utf-8"
-            )
-        except Exception as e:
-            print(f"[TriggerEngine] Failed to save triggers: {e}")
+        with self._lock:
+            self.memory_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                self.memory_path.write_text(
+                    json.dumps({"triggers": self.triggers}, indent=4), 
+                    encoding="utf-8"
+                )
+            except Exception as e:
+                print(f"[TriggerEngine] Failed to save triggers: {e}")
 
     def add_trigger(self, trigger_data: dict):
         """
@@ -59,22 +62,25 @@ class TriggerEngine:
             "last_fired": 0
         }
         """
-        trigger_data["last_fired"] = 0
-        self.triggers.append(trigger_data)
-        self._save_triggers()
-        print(f"[TriggerEngine] Added trigger: {trigger_data.get('name')}")
-        return f"Trigger added: {trigger_data.get('name')}"
+        with self._lock:
+            trigger_data["last_fired"] = 0
+            self.triggers.append(trigger_data)
+            self._save_triggers()
+            print(f"[TriggerEngine] Added trigger: {trigger_data.get('name')}")
+            return f"Trigger added: {trigger_data.get('name')}"
 
     def remove_trigger(self, trigger_id: str):
-        original_len = len(self.triggers)
-        self.triggers = [t for t in self.triggers if t.get("id") != trigger_id]
-        if len(self.triggers) < original_len:
-            self._save_triggers()
-            return f"Removed trigger: {trigger_id}"
-        return "Trigger not found."
+        with self._lock:
+            original_len = len(self.triggers)
+            self.triggers = [t for t in self.triggers if t.get("id") != trigger_id]
+            if len(self.triggers) < original_len:
+                self._save_triggers()
+                return f"Removed trigger: {trigger_id}"
+            return "Trigger not found."
 
     def list_triggers(self):
-        return self.triggers
+        with self._lock:
+            return list(self.triggers)
 
     def start(self):
         if self.running:
@@ -92,7 +98,9 @@ class TriggerEngine:
     def _run_loop(self):
         while self.running:
             now = time.time()
-            for trigger in self.triggers:
+            with self._lock:
+                current_triggers = list(self.triggers)
+            for trigger in current_triggers:
                 try:
                     self._evaluate_trigger(trigger, now)
                 except Exception as e:
@@ -129,11 +137,12 @@ class TriggerEngine:
             if current_val != -1:
                 if op == ">=" and current_val >= value: fired = True
                 elif op == "<=" and current_val <= value: fired = True
+                elif op == "==" and current_val == value: fired = True
 
         # 3. Time Evaluate
         elif t_type == "time":
             # Very basic time match (e.g. HH:MM)
-            target_time = cond.get("time") # format "14:30"
+            target_time = cond.get("value") or cond.get("time") or cond.get("metric")
             if target_time:
                 current_dt = datetime.now()
                 current_time = current_dt.strftime("%H:%M")
@@ -141,7 +150,26 @@ class TriggerEngine:
                 if current_time == target_time:
                     fired = trigger.get("last_fired_minute") != fired_minute_key
 
-        # 4. Execute Action
+        # 4. File Evaluate
+        elif t_type == "file":
+            target_path_str = cond.get("value") or cond.get("metric")
+            if target_path_str:
+                from pathlib import Path
+                p = Path(target_path_str)
+                op = cond.get("operator", "exists")
+                
+                if op in ("==", "exists", None):
+                    fired = p.exists()
+                elif op in (">=", "not_empty"):
+                    if p.is_dir():
+                        try:
+                            fired = any(p.iterdir())
+                        except Exception:
+                            fired = False
+                    else:
+                        fired = p.exists() and p.stat().st_size > 0
+
+        # 5. Execute Action
         if fired:
             # Update cooldown immediately to prevent double fires
             trigger["last_fired"] = now

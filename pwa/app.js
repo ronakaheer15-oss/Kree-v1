@@ -12,6 +12,9 @@ let editingNoteId = null;
 let speechRec = null;
 let micStream = null;
 let mediaRecorder = null;
+let audioContext = null;
+let scriptProcessor = null;
+let audioSource = null;
 let installPromptEvent = null;
 
 const TABS = ['dashboard', 'notes', 'contacts', 'connect', 'files'];
@@ -106,6 +109,12 @@ function switchTab(tabId) {
     btn.classList.toggle('active', btn.dataset.tab === tabId);
   });
 
+  // Show command input and mic only on the Dashboard tab when connected
+  const cmdBar = document.querySelector('.floating-cmd-bar');
+  if (cmdBar) {
+    cmdBar.style.display = (connected && tabId === 'dashboard') ? 'flex' : 'none';
+  }
+
   if (mainContent) mainContent.scrollTop = 0;
 }
 
@@ -152,21 +161,18 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('beforeinstallprompt', e => {
       e.preventDefault();
       installPromptEvent = e;
-      const banner = $('install-banner');
-      if (banner && !localStorage.getItem('kree_install_dismissed')) {
-        banner.style.display = 'block';
-      }
     });
-    const installBtn = $('install-btn');
-    if (installBtn) {
-      installBtn.addEventListener('click', () => {
+    const installBtnNative = $('install-btn-native');
+    if (installBtnNative) {
+      installBtnNative.addEventListener('click', () => {
         if (installPromptEvent) {
           installPromptEvent.prompt();
           installPromptEvent.userChoice.then(() => {
             installPromptEvent = null;
-            const banner = $('install-banner');
-            if (banner) banner.style.display = 'none';
+            dismissInstallGuide();
           });
+        } else {
+          showToast('Install prompt not available. Add from browser menu.');
         }
       });
     }
@@ -201,7 +207,8 @@ function connectToDesktop(ip) {
   if (ws) { try { ws.close(); } catch(e){} }
 
   try {
-    const wsUrl = `ws://${ip}:8443/`;
+    const port = window.location.port || '8765';
+    const wsUrl = `ws://${ip}:${port}/ws`;
     ws = new WebSocket(wsUrl);
     ws.binaryType = 'arraybuffer';
   } catch(e) {
@@ -210,13 +217,7 @@ function connectToDesktop(ip) {
   }
 
   ws.onopen = () => {
-    connected = true;
-    connectedSince = new Date();
-    updateConnectionUI(true);
-    switchTab('dashboard');
-    addConnectionLog('Connected');
-
-    // Authenticate via payload message (token never in URL)
+    // Authenticate via payload message
     const token = localStorage.getItem('kree_auth_token') || '';
     wsSend({ type: 'auth', token: token });
 
@@ -224,26 +225,59 @@ function connectToDesktop(ip) {
     const ua = navigator.userAgent;
     const os = /iphone|ipad|ipod/i.test(ua) ? 'iOS' : /android/i.test(ua) ? 'Android' : 'Unknown';
     wsSend({ type: 'device_info', os: os, agent: ua.substring(0, 100) });
-
-    // Sync data to desktop
-    syncNotesToDesktop();
-    syncContactsToDesktop();
-
-    showToast('Connected to Kree Desktop');
   };
 
   ws.onmessage = evt => {
+    if (evt.data instanceof ArrayBuffer) {
+      playIncomingAudio(evt.data);
+      return;
+    }
     try {
       const data = JSON.parse(evt.data);
-      handleMessage(data);
+      if (data.type === 'auth_ok') {
+        connected = true;
+        connectedSince = new Date();
+        updateConnectionUI(true);
+        switchTab('dashboard');
+        addConnectionLog('Connected');
+        showToast('Connected to Kree Desktop');
+
+        // Sync data to desktop
+        syncNotesToDesktop();
+        syncContactsToDesktop();
+
+        // Trigger Install Guide if not standalone and not dismissed
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+        if (!isStandalone && !localStorage.getItem('kree_install_dismissed')) {
+          const guide = $('install-guide');
+          if (guide) {
+            guide.style.display = 'flex';
+            // Show correct steps
+            if (/iphone|ipad|ipod/i.test(navigator.userAgent)) {
+              $('install-steps-ios').style.display = 'flex';
+              $('install-steps-android').style.display = 'none';
+            } else {
+              $('install-steps-android').style.display = 'flex';
+              $('install-steps-ios').style.display = 'none';
+            }
+          }
+        }
+      } else {
+        handleMessage(data);
+      }
     } catch(e) {}
   };
 
-  ws.onclose = () => {
+  ws.onclose = e => {
     connected = false;
     updateConnectionUI(false);
     updateKreeState('offline');
     addConnectionLog('Disconnected');
+
+    if (e.code === 1008) {
+      showToast('Authentication failed. Scan QR code on desktop to connect.');
+      return; // Do not auto-reconnect if auth failed
+    }
 
     // Auto-reconnect with exponential backoff
     const toggle = $('auto-reconnect-toggle');
@@ -269,6 +303,12 @@ function updateConnectionUI(isConnected) {
   statusPill.textContent = isConnected ? '● ONLINE' : '○ OFFLINE';
   offlineBanner.style.display = isConnected ? 'none' : (desktopIP ? 'flex' : 'none');
   scanView.style.display = isConnected ? 'none' : 'flex';
+
+  // Toggle command input and mic based on connection state
+  const cmdBar = document.querySelector('.floating-cmd-bar');
+  if (cmdBar) {
+    cmdBar.style.display = isConnected ? 'flex' : 'none';
+  }
 
   // Show/hide tabs
   TABS.forEach(t => {
@@ -1138,9 +1178,9 @@ function hideToast() {
 // ═══════════════════════════════════════════════════════════
 // ── Install Prompt ───────────────────────────────────────
 // ═══════════════════════════════════════════════════════════
-function dismissInstall() {
-  const banner = $('install-banner');
-  if (banner) banner.style.display = 'none';
+function dismissInstallGuide() {
+  const guide = $('install-guide');
+  if (guide) guide.style.display = 'none';
   localStorage.setItem('kree_install_dismissed', '1');
 }
 
@@ -1150,20 +1190,56 @@ function dismissInstall() {
 async function startMicStream() {
   const btn = $('floating-mic-btn');
   try {
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(micStream, { mimeType: 'audio/webm;codecs=opus' });
-
-    mediaRecorder.ondataavailable = e => {
-      if (e.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
-        // Send raw binary audio blob chunks to Kree desktop
-        ws.send(e.data);
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      if (!sessionStorage.getItem('kree_mic_alert_shown')) {
+        sessionStorage.setItem('kree_mic_alert_shown', '1');
+        alert("⚠️ INSECURE CONTEXT DETECTED!\n\n" +
+              "Mobile browsers block the microphone on HTTP connections.\n\n" +
+              "To enable it on Android Chrome:\n" +
+              "1. Open a normal Chrome tab and go to:\n   chrome://flags/#unsafely-treat-insecure-origin-as-secure\n" +
+              "2. Enable the flag.\n" +
+              "3. Enter the exact URL: 'http://" + window.location.host + "' (MUST include 'http://' and the port!).\n" +
+              "4. Tap the blue 'Relaunch' button at the bottom of Chrome.\n\n" +
+              "⚠️ IMPORTANT: If you 'Installed' Kree to your Home Screen, developer flags will NOT apply there due to Android restrictions. You MUST run Kree directly inside a Google Chrome browser tab!");
       }
+      showToast('Mic blocked by browser (HTTP)');
+      if (btn) btn.classList.remove('streaming');
+      return;
+    }
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    
+    // Create AudioContext at 16000Hz (downsamples automatically!)
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    audioContext = new AudioContextClass({ sampleRate: 16000 });
+    if (audioContext.state === 'suspended') {
+      await audioContext.resume();
+    }
+    audioSource = audioContext.createMediaStreamSource(micStream);
+    
+    // 4096 buffer size, 1 input channel, 1 output channel
+    scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+    
+    scriptProcessor.onaudioprocess = e => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      
+      const inputData = e.inputBuffer.getChannelData(0); // Float32Array
+      // Convert to 16-bit signed PCM
+      const pcmData = new Int16Array(inputData.length);
+      for (let i = 0; i < inputData.length; i++) {
+        let s = Math.max(-1, Math.min(1, inputData[i]));
+        pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+      }
+      // Send raw binary array buffer
+      ws.send(pcmData.buffer);
     };
 
-    mediaRecorder.start(100); // chunk every 100ms
+    audioSource.connect(scriptProcessor);
+    scriptProcessor.connect(audioContext.destination);
+
     if (btn) btn.classList.add('streaming');
     showToast('Streaming voice to Kree...');
   } catch(e) {
+    console.error("Mic stream error:", e);
     showToast('Mic access denied');
     if (btn) btn.classList.remove('streaming');
   }
@@ -1173,12 +1249,63 @@ function stopMicStream() {
   const btn = $('floating-mic-btn');
   if (btn) btn.classList.remove('streaming');
 
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-    try { mediaRecorder.stop(); } catch(e) {}
+  if (scriptProcessor) {
+    try { scriptProcessor.disconnect(); } catch(e) {}
+    scriptProcessor = null;
+  }
+  if (audioSource) {
+    try { audioSource.disconnect(); } catch(e) {}
+    audioSource = null;
+  }
+  if (audioContext) {
+    try { audioContext.close(); } catch(e) {}
+    audioContext = null;
   }
   if (micStream) {
     micStream.getTracks().forEach(t => t.stop());
     micStream = null;
   }
-  mediaRecorder = null;
 }
+
+// ═══════════════════════════════════════════════════════════
+// ── Play Incoming Voice Response from Kree (24kHz PCM) ───
+// ═══════════════════════════════════════════════════════════
+let playbackContext = null;
+let nextPlayTime = 0;
+
+function playIncomingAudio(arrayBuffer) {
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!playbackContext) {
+      playbackContext = new AudioContextClass();
+      nextPlayTime = playbackContext.currentTime;
+    }
+    
+    if (playbackContext.state === 'suspended') {
+      playbackContext.resume();
+    }
+    
+    const pcmData = new Int16Array(arrayBuffer);
+    const floatData = new Float32Array(pcmData.length);
+    for (let i = 0; i < pcmData.length; i++) {
+      floatData[i] = pcmData[i] / 32768.0;
+    }
+    
+    const audioBuffer = playbackContext.createBuffer(1, floatData.length, 24000);
+    audioBuffer.getChannelData(0).set(floatData);
+    
+    const source = playbackContext.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(playbackContext.destination);
+    
+    const now = playbackContext.currentTime;
+    if (nextPlayTime < now) {
+      nextPlayTime = now;
+    }
+    source.start(nextPlayTime);
+    nextPlayTime += audioBuffer.duration;
+  } catch (err) {
+    console.error("Error playing incoming audio chunk:", err);
+  }
+}
+

@@ -20,16 +20,18 @@ from pathlib import Path
 
 
 from kree._paths import PROJECT_ROOT
+from kree.core.runtime import CONFIG_DIR
+from kree.core.version import MODEL_FLASH
 BASE_DIR = PROJECT_ROOT
-API_CONFIG_PATH    = BASE_DIR / "config" / "api_keys.json"
+API_CONFIG_PATH = CONFIG_DIR / "api_keys.json"
 DESKTOP            = Path.home() / "Desktop"
 MAX_BUILD_ATTEMPTS = 3
-GEMINI_MODEL       = "gemini-2.5-flash"
+GEMINI_MODEL       = MODEL_FLASH
 
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    from kree.core import vault
+    return vault.load_api_key(API_CONFIG_PATH)
 
 
 def _get_gemini(model: str = GEMINI_MODEL):
@@ -215,6 +217,14 @@ Fixed code:"""
 
 
 def _run_file(path: Path, args: list, timeout: int) -> str:
+    import ctypes
+    MB_YESNO = 4
+    IDYES = 6
+    msg = f"Kree is attempting to execute the following script:\n\n{path}\n\nDo you authorize this action, sir?"
+    res = ctypes.windll.user32.MessageBoxW(0, msg, "Project Aegis: CODE EXECUTION WARNING", MB_YESNO | 0x30) # type: ignore
+    if res != IDYES:
+        return "Execution aborted by user for safety."
+
     interpreters = {
         ".py":  [sys.executable],
         ".js":  ["node"],
@@ -499,7 +509,7 @@ Be specific and actionable. If you see an error message, quote it exactly."""
         ]
 
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=MODEL_FLASH,
             contents=contents,
         )
 

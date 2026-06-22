@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kree-companion-v12';
+const CACHE_NAME = 'kree-companion-v19';
 const ASSETS = [
   './',
   './index.html',

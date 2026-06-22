@@ -20,7 +20,7 @@ import mss
 import mss.tools
 import pyaudio
 
-from core import vault
+from kree.core import vault
 
 try:
     import PIL.Image
@@ -41,11 +41,12 @@ def _ensure_genai_sdk():
         _GENAI_SDK = (_genai, _types)
     return _GENAI_SDK
 
-from kree._paths import PROJECT_ROOT
-BASE_DIR = PROJECT_ROOT
-API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
+from kree.core.runtime import CONFIG_DIR
+API_CONFIG_PATH = CONFIG_DIR / "api_keys.json"
+CAMERA_CONFIG_PATH = CONFIG_DIR / "camera_settings.json"
 
-LIVE_MODEL          = "models/gemini-2.5-flash-native-audio-preview-12-2025"
+from kree.core.version import MODEL_LIVE_AUDIO
+LIVE_MODEL          = MODEL_LIVE_AUDIO
 FORMAT              = pyaudio.paInt16
 CHANNELS            = 1
 RECEIVE_SAMPLE_RATE = 24000
@@ -68,18 +69,8 @@ SYSTEM_PROMPT = (
 
 def _get_api_key() -> str:
     key = vault.load_api_key(API_CONFIG_PATH).strip()
-    if key:
-        return key
-
-    try:
-        with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-            keys = json.load(f)
-    except Exception as e:
-        raise RuntimeError(f"Could not load API key: {e}") from e
-
-    key = str(keys.get("gemini_api_key", "")).strip()
     if not key:
-        raise RuntimeError("gemini_api_key not found")
+        raise RuntimeError("Gemini API key missing or invalid.")
     return key
 
 
@@ -90,10 +81,10 @@ def _get_camera_index() -> int:
     Runs only once — after that, config value is used directly.
     """
     try:
-        with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        if "camera_index" in cfg:
-            return int(cfg["camera_index"])
+        if CAMERA_CONFIG_PATH.exists():
+            cfg = json.loads(CAMERA_CONFIG_PATH.read_text(encoding="utf-8"))
+            if "camera_index" in cfg:
+                return int(cfg["camera_index"])
     except Exception:
         pass
 
@@ -120,13 +111,8 @@ def _get_camera_index() -> int:
             print(f"[Camera] ⚠️  Index {idx}: no valid frame (black or empty).")
 
     try:
-        cfg = {}
-        if API_CONFIG_PATH.exists():
-            with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-                cfg = json.load(f)
-        cfg["camera_index"] = best_index
-        with open(API_CONFIG_PATH, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, indent=4)
+        cfg = {"camera_index": best_index}
+        CAMERA_CONFIG_PATH.write_text(json.dumps(cfg, indent=4), encoding="utf-8")
         print(f"[Camera] 💾 Camera index {best_index} saved to config.")
     except Exception as e:
         print(f"[Camera] ⚠️  Could not save camera index: {e}")

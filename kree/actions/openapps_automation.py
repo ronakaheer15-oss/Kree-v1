@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Any
 
 from kree.actions.open_app import open_app  # type: ignore[import]
+from kree.core.runtime import CONFIG_DIR
+import json
 
 try:
     import psutil  # type: ignore[import]
@@ -52,11 +54,23 @@ _DOWNLOAD_URLS: dict[str, str] = {
 
 
 def _get_openapps_dir() -> Path:
+    # 1. Check environment variable
     env_path = os.environ.get("OPENAPPS_DIR", "").strip()
     if env_path:
         return Path(env_path)
 
-    # actions/ -> project root candidates
+    # 2. Check openapps_config.json in user's config directory
+    config_file = CONFIG_DIR / "openapps_config.json"
+    if config_file.exists():
+        try:
+            cfg = json.loads(config_file.read_text(encoding="utf-8"))
+            saved_path = cfg.get("openapps_dir", "").strip()
+            if saved_path:
+                return Path(saved_path)
+        except Exception:
+            pass
+
+    # 3. Dynamic candidates
     here = Path(__file__).resolve()
     candidates = [
         here.parents[3] / "_Related_Projects" / "OpenApps-main",

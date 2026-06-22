@@ -1,22 +1,25 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import secrets
 import uuid
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from kree.memory.config_manager import CONFIG_DIR, ensure_config_dir
+_auth_store_lock = threading.RLock()
 
+from kree.core.runtime import VAULT_DIR
 from kree.core import vault
 
 
 AUTH_HASH_ITERATIONS = 200_000
-AUTH_FILE = CONFIG_DIR / "user_auth.json"
-USER_SECRETS_DIR = CONFIG_DIR / "user_secrets"
-LEGACY_API_FILE = CONFIG_DIR / "api_keys.json"
+AUTH_FILE = VAULT_DIR / "user_auth.json"
+USER_SECRETS_DIR = VAULT_DIR / "user_secrets"
+LEGACY_API_FILE = VAULT_DIR / "api_keys.json"
 
 
 def _now() -> str:
@@ -36,32 +39,35 @@ def _default_state() -> dict[str, Any]:
 
 
 def _ensure_storage() -> None:
-    ensure_config_dir()
+    VAULT_DIR.mkdir(parents=True, exist_ok=True)
     USER_SECRETS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _load_state() -> dict[str, Any]:
-    if not AUTH_FILE.exists():
+    with _auth_store_lock:
+        if not AUTH_FILE.exists():
+            return _default_state()
+        try:
+            raw = json.loads(AUTH_FILE.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                state = _default_state()
+                state.update(raw)
+                users = state.get("users")
+                if not isinstance(users, list):
+                    state["users"] = []
+                return state
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to load auth state from {AUTH_FILE}: {e}")
         return _default_state()
-    try:
-        raw = json.loads(AUTH_FILE.read_text(encoding="utf-8"))
-        if isinstance(raw, dict):
-            state = _default_state()
-            state.update(raw)
-            users = state.get("users")
-            if not isinstance(users, list):
-                state["users"] = []
-            return state
-    except Exception:
-        pass
-    return _default_state()
 
 
 def _save_state(state: dict[str, Any]) -> None:
-    _ensure_storage()
-    tmp = AUTH_FILE.with_suffix(f"{AUTH_FILE.suffix}.tmp")
-    tmp.write_text(json.dumps(state, indent=2), encoding="utf-8")
-    tmp.replace(AUTH_FILE)
+    with _auth_store_lock:
+        _ensure_storage()
+        tmp = AUTH_FILE.with_suffix(f"{AUTH_FILE.suffix}.tmp")
+        tmp.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        tmp.replace(AUTH_FILE)
 
 
 def _new_salt() -> str:
@@ -223,7 +229,7 @@ def sign_in_user(identifier: str, password: str) -> dict[str, Any]:
 
     password_salt = str(user.get("password_salt", ""))
     saved_hash = str(user.get("password_hash", ""))
-    if not password_salt or _hash_value(password or "", password_salt) != saved_hash:
+    if not password_salt or not hmac.compare_digest(_hash_value(password or "", password_salt), saved_hash):
         return {"ok": False, "message": "Incorrect password."}
 
     user["last_login_at"] = _now()
@@ -284,7 +290,7 @@ def verify_user_pin(user_id: str, pin: str) -> dict[str, Any]:
 
     pin_salt = str(user.get("pin_salt", ""))
     pin_hash = str(user.get("pin_hash", ""))
-    if not pin_salt or _hash_value(pin_clean, pin_salt) != pin_hash:
+    if not pin_salt or not hmac.compare_digest(_hash_value(pin_clean, pin_salt), pin_hash):
         return {"ok": False, "message": "Invalid PIN."}
 
     active = _public_user(user)

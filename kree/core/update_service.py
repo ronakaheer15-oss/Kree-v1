@@ -20,17 +20,15 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
-import requests  # type: ignore[import]
-
 from kree.core.version import APP_NAME, APP_VERSION  # type: ignore[import]
 
 
 from kree._paths import PROJECT_ROOT
+from kree.core.runtime import CONFIG_DIR, APP_DATA_DIR
 BASE_DIR = PROJECT_ROOT
-CONFIG_DIR = BASE_DIR / "config"
 UPDATE_STATE_FILE = CONFIG_DIR / "update_state.json"
 UPDATE_SETTINGS_FILE = CONFIG_DIR / "update_settings.json"
-UPDATE_CACHE_DIR = BASE_DIR / "updates"
+UPDATE_CACHE_DIR = APP_DATA_DIR / "updates"
 
 DEFAULT_UPDATE_SETTINGS: dict[str, Any] = {
     "manifest_url": "",
@@ -148,6 +146,7 @@ def _normalize_manifest(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def _fetch_manifest(manifest_url: str) -> dict[str, Any]:
+    import requests
     if not manifest_url:
         raise ValueError("No manifest URL has been configured.")
 
@@ -226,6 +225,7 @@ def check_for_updates(manifest_url: str | None = None) -> dict[str, Any]:
 
 
 def _download_to_file(download_url: str, destination: Path) -> Path:
+    import requests
     response = requests.get(download_url, stream=True, timeout=30)
     response.raise_for_status()
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -318,6 +318,15 @@ def apply_update(download_path: str | None = None) -> dict[str, Any]:
     package_path = Path(path_text)
     if not package_path.exists():
         return {"ok": False, "status": "The downloaded update file could not be found.", "error": "missing file"}
+
+    checksum = str(state.get("checksum") or "").strip().lower()
+    if checksum:
+        try:
+            actual = _checksum_sha256(package_path)
+            if actual.lower() != checksum:
+                return {"ok": False, "status": "Security alert: Checksum validation failed for update file.", "error": "checksum mismatch"}
+        except Exception as e:
+            return {"ok": False, "status": f"Could not verify update checksum: {e}", "error": "verification error"}
 
     try:
         helper = _build_update_helper(package_path, BASE_DIR, os.getpid())

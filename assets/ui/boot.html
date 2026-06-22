@@ -1,9 +1,30 @@
 <!doctype html>
-<html lang="en">
+<html class="dark" lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Kree AI</title>
+    <script src="../tailwindcss.js"></script>
+    <link href="../fonts/fonts.css" rel="stylesheet" />
+    <script>
+        window.tailwind = window.tailwind || {};
+        window.tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#00DC82',
+                        secondary: '#a855f7',
+                        accent: '#fbbf24',
+                    },
+                    fontFamily: {
+                        display: ["'Rajdhani'", "sans-serif"],
+                        mono: ["'JetBrains Mono'", "monospace"],
+                    }
+                }
+            }
+        };
+    </script>
     <style>
         html, body {
             margin: 0;

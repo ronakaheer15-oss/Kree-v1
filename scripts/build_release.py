@@ -6,18 +6,23 @@ import shutil
 import zipfile
 from pathlib import Path
 
-from core.version import APP_NAME, APP_VERSION
+import sys
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from kree.core.version import APP_NAME, APP_VERSION
 
 
-ROOT = Path(__file__).resolve().parent
-DIST_DIR = ROOT / "dist"
+DIST_DIR = PROJECT_ROOT / "dist"
 SOURCE_DIR = DIST_DIR / "Kree AI"
 RELEASE_DIR = DIST_DIR / "release"
 STAGE_DIR = RELEASE_DIR / "stage"
 PACKAGE_NAME = f"Kree-AI-v{APP_VERSION}-win64.zip"
 PACKAGE_PATH = RELEASE_DIR / PACKAGE_NAME
 MANIFEST_PATH = RELEASE_DIR / "kree-update-manifest.json"
-README_SRC = ROOT / "README-INSTALL.txt"
+README_SRC = PROJECT_ROOT / "README-INSTALL.txt"
+if not README_SRC.exists():
+    README_SRC = PROJECT_ROOT / "scripts" / "README-INSTALL.txt"
 
 
 def _copy_tree_without_config(source: Path, destination: Path) -> None:

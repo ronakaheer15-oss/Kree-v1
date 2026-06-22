@@ -1,8 +1,7 @@
 import json
 
-from kree._paths import PROJECT_ROOT
-BASE_DIR = PROJECT_ROOT
-CONFIG_FILE = BASE_DIR / "core" / "automations_config.json"
+from kree.core.runtime import CONFIG_DIR
+CONFIG_FILE = CONFIG_DIR / "automations_config.json"
 
 DEFAULT_CONFIG = {
     "chains": {

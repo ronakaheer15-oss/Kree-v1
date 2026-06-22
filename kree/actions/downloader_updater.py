@@ -142,7 +142,10 @@ def _catalog_entry(target: str) -> dict[str, str] | None:
 def _suggest_catalog(target: str, limit: int = 4) -> list[str]:
     t = _normalize_target(target)
     base = list(_APP_CATALOG.keys())
-    return difflib.get_close_matches(t, base, n=limit, cutoff=SUGGEST_MATCH_CUTOFF)
+    matches = difflib.get_close_matches(t, base, n=limit, cutoff=SUGGEST_MATCH_CUTOFF)
+    if not matches:
+        return ["chrome", "spotify", "vscode", "discord", "whatsapp", "notepad", "git"][:limit]
+    return matches
 
 
 def _extract_target_from_text(text: str) -> str:

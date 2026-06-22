@@ -3,9 +3,8 @@ import re
 from enum import Enum
 
 
-from kree._paths import PROJECT_ROOT
-BASE_DIR = PROJECT_ROOT
-API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
+from kree.core.runtime import CONFIG_DIR
+API_CONFIG_PATH = CONFIG_DIR / "api_keys.json"
 
 
 class ErrorDecision(Enum):
@@ -43,8 +42,8 @@ Return ONLY valid JSON:
 
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    from kree.core import vault
+    return vault.load_api_key(API_CONFIG_PATH)
 
 
 def analyze_error(
@@ -85,8 +84,9 @@ def analyze_error(
         }
 
     genai.configure(api_key=_get_api_key())
+    from kree.core.version import MODEL_FLASH_LITE
     model = genai.GenerativeModel(
-        model_name="gemini-2.5-flash-lite",
+        model_name=MODEL_FLASH_LITE,
         system_instruction=ERROR_ANALYST_PROMPT
     )
 
@@ -145,7 +145,8 @@ def generate_fix(step: dict, error: str, fix_suggestion: str) -> dict:
     import google.generativeai as genai
 
     genai.configure(api_key=_get_api_key())
-    model = genai.GenerativeModel(model_name="gemini-2.0-flash")
+    from kree.core.version import MODEL_FLASH
+    model = genai.GenerativeModel(model_name=MODEL_FLASH)
 
     prompt = f"""A task step failed. Generate a replacement step.
 

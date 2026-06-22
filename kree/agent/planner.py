@@ -2,9 +2,8 @@ import json
 import re
 
 
-from kree._paths import PROJECT_ROOT
-BASE_DIR = PROJECT_ROOT
-API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
+from kree.core.runtime import CONFIG_DIR
+API_CONFIG_PATH = CONFIG_DIR / "api_keys.json"
 
 
 PLANNER_PROMPT = """You are the planning module of MARK XXV, a personal AI assistant.
@@ -145,8 +144,8 @@ OUTPUT — return ONLY valid JSON, no markdown, no explanation, no code blocks:
 
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    from kree.core import vault
+    return vault.load_api_key(API_CONFIG_PATH)
 
 
 def create_plan(goal: str, context: str = "") -> dict:
@@ -154,7 +153,8 @@ def create_plan(goal: str, context: str = "") -> dict:
     from google.genai import types
 
     client = genai.Client(api_key=_get_api_key())
-    model_name = "gemini-2.5-flash-lite"
+    from kree.core.version import MODEL_FLASH_LITE
+    model_name = MODEL_FLASH_LITE
     config = types.GenerateContentConfig(
         system_instruction=PLANNER_PROMPT,
         temperature=0.1
@@ -220,7 +220,8 @@ def replan(goal: str, completed_steps: list, failed_step: dict, error: str) -> d
     from google.genai import types
 
     client = genai.Client(api_key=_get_api_key())
-    model_name = "gemini-2.5-flash"
+    from kree.core.version import MODEL_FLASH
+    model_name = MODEL_FLASH
     config = types.GenerateContentConfig(
         system_instruction=PLANNER_PROMPT,
         temperature=0.1

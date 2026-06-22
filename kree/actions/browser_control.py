@@ -4,8 +4,19 @@ import concurrent.futures
 import platform
 import shutil
 import subprocess
+import atexit
 from pathlib import Path
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
+import os
+import logging
+from kree.core.runtime import APP_DATA_DIR
+
+logger = logging.getLogger(__name__)
+PLAYWRIGHT_BROWSERS_PATH = APP_DATA_DIR / "playwright_browsers"
+os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(PLAYWRIGHT_BROWSERS_PATH)
+
+_chromium_installing = False
+_install_failed_until = 0.0
 
 def _get_default_browser_id() -> str:
     """Returns raw default browser identifier string for current OS."""
@@ -66,6 +77,19 @@ _BROWSER_BINARIES = {
     },
 }
 
+_BROWSER_PATTERNS = {
+    "brave":   ["brave"],
+    "vivaldi": ["vivaldi"],
+    "chrome":  ["chrome"],
+}
+
+_ROLE_HINTS = {
+    "button":    ["button", "buton", "btn"],
+    "link":      ["link", "bağlantı"],
+    "searchbox": ["search", "arama"],
+    "textbox":   ["input", "field", "alan"],
+}
+
 
 def _get_opera_executable() -> str | None:
     if platform.system() != "Windows":
@@ -118,12 +142,7 @@ def _find_browser_executable(prog_id: str) -> tuple:
             if path:
                 return "chromium", path, None
 
-    browser_patterns = {
-        "brave":   ["brave"],
-        "vivaldi": ["vivaldi"],
-        "chrome":  ["chrome"],
-    }
-    for browser_name, patterns in browser_patterns.items():
+    for browser_name, patterns in _BROWSER_PATTERNS.items():
         if not any(p in prog_id for p in patterns):
             continue
         binaries = os_bins.get(browser_name, [])
@@ -151,6 +170,8 @@ class _BrowserThread:
         self._browser    = None
         self._context    = None
         self._page       = None
+        self._player     = None
+        self._install_lock = None
 
     def start(self):
         if self._thread and self._thread.is_alive():
@@ -169,6 +190,7 @@ class _BrowserThread:
         self._loop.run_forever()
 
     async def _init(self):
+        self._install_lock = asyncio.Lock()
         self._playwright = await async_playwright().start()
 
     def run(self, coro, timeout: int = 30):
@@ -207,10 +229,70 @@ class _BrowserThread:
                 )
         except Exception as e:
             print(f"[Browser] ⚠️ Launch failed ({e}), falling back to built-in Chromium")
-            self._browser = await self._playwright.chromium.launch(
-                headless=False,
-                args=["--start-maximized"]
-            )
+            import time
+            player = getattr(self, "_player", None)
+            global _chromium_installing, _install_failed_until
+            cooldown_left = int(_install_failed_until - time.time())
+            if cooldown_left > 0:
+                msg = f"Playwright Chromium installation failed recently. Retrying disabled for {cooldown_left}s."
+                print(f"[Browser] ❌ {msg}")
+                if player:
+                    player.write_log(f"Kree: Browser launch disabled: Cooldown active ({cooldown_left}s left).")
+                raise RuntimeError(msg)
+
+            try:
+                self._browser = await self._playwright.chromium.launch(
+                    headless=False,
+                    args=["--start-maximized"]
+                )
+            except Exception as exc:
+                if "executable doesn't exist" in str(exc).lower() or "playwright install" in str(exc).lower():
+                    async with self._install_lock:
+                        # Double-check if another request completed the installation while we waited for the lock
+                        try:
+                            self._browser = await self._playwright.chromium.launch(
+                                headless=False,
+                                args=["--start-maximized"]
+                            )
+                            return
+                        except Exception:
+                            pass
+
+                        _chromium_installing = True
+                        try:
+                            print("[Browser] 📥 Chromium not found. Installing automatically via Playwright CLI...")
+                            if player:
+                                player.write_log("Kree: Installing Chromium browser in background. Please wait...")
+                            
+                            def do_install():
+                                from playwright._impl._driver import compute_driver_executable, get_driver_env
+                                driver_executable, driver_cli = compute_driver_executable()
+                                env = get_driver_env()
+                                env["PLAYWRIGHT_BROWSERS_PATH"] = str(PLAYWRIGHT_BROWSERS_PATH)
+                                subprocess.check_call(
+                                    [driver_executable, driver_cli, "install", "chromium"],
+                                    env=env,
+                                    timeout=600  # 10-minute timeout
+                                )
+                            
+                            await asyncio.to_thread(do_install)
+                            print("[Browser] ✅ Chromium installed successfully. Retrying launch...")
+                            if player:
+                                player.write_log("Kree: Chromium installed. Launching browser now...")
+                            self._browser = await self._playwright.chromium.launch(
+                                headless=False,
+                                args=["--start-maximized"]
+                            )
+                        except Exception as install_err:
+                            _install_failed_until = time.time() + 300
+                            print(f"[Browser] ❌ Auto-install failed: {install_err}")
+                            if player:
+                                player.write_log(f"Kree: Chromium installation failed: {install_err}")
+                            raise install_err
+                        finally:
+                            _chromium_installing = False
+                else:
+                    raise exc
 
         self._context = await self._browser.new_context(
             viewport=None,
@@ -320,31 +402,25 @@ class _BrowserThread:
         page       = await self._get_page()
         desc_lower = description.lower()
 
-        role_hints = {
-            "button":    ["button", "buton", "btn"],
-            "link":      ["link", "bağlantı"],
-            "searchbox": ["search", "arama"],
-            "textbox":   ["input", "field", "alan"],
-        }
-        for role, keywords in role_hints.items():
+        for role, keywords in _ROLE_HINTS.items():
             if any(k in desc_lower for k in keywords):
                 try:
                     await page.get_by_role(role).first.click(timeout=5000)
                     return f"Clicked ({role}): '{description}'"
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Smart click (role {role}) failed: {e}")
 
         try:
             await page.get_by_text(description, exact=False).first.click(timeout=5000)
             return f"Clicked (text): '{description}'"
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Smart click (text) failed: {e}")
 
         try:
             await page.get_by_placeholder(description, exact=False).first.click(timeout=5000)
             return f"Clicked (placeholder): '{description}'"
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Smart click (placeholder) failed: {e}")
 
         return f"Could not find: '{description}'"
 
@@ -361,7 +437,8 @@ class _BrowserThread:
                 await el.clear()
                 await el.type(text, delay=50)
                 return f"Typed into ({method}): '{description}'"
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Smart type ({method}) failed: {e}")
                 continue
 
         return f"Could not find input: '{description}'"
@@ -374,13 +451,24 @@ _bt         = _BrowserThread()
 _bt_started = False
 _bt_lock    = threading.Lock()
 
+def _cleanup_browser():
+    global _bt_started
+    if _bt_started:
+        try:
+            _bt.run(_bt._close_browser(), timeout=5)
+        except Exception:
+            pass
 
-def _ensure_started():
+atexit.register(_cleanup_browser)
+
+def _ensure_started(player=None):
     global _bt_started
     with _bt_lock:
         if not _bt_started:
             _bt.start()
             _bt_started = True
+        if player is not None:
+            _bt._player = player
 
 def browser_control(
     parameters:     dict,
@@ -406,7 +494,7 @@ def browser_control(
         fields      : {selector: value} dict for fill_form
         clear_first : bool, clear input before typing (default: True)
     """
-    _ensure_started()
+    _ensure_started(player=player)
 
     action = (parameters or {}).get("action", "").lower().strip()
     result = "Unknown action."

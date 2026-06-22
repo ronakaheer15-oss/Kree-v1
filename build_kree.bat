@@ -37,7 +37,7 @@ if errorlevel 1 goto build_failed
 :: ── PyInstaller Build ────────────────────────────────────────────────────
 echo [3/5] Starting PyInstaller Core Build...
 echo       This may take 2-5 minutes. Please wait...
-python -m PyInstaller --clean --noconfirm "%KREE_ROOT%Kree AI.spec" > "%KREE_ROOT%build_kree.log" 2>&1
+python -m PyInstaller "%KREE_ROOT%Kree AI.spec" > "%KREE_ROOT%build_kree.log" 2>&1
 if errorlevel 1 goto build_failed
 
 :: ── Verify ───────────────────────────────────────────────────────────────

@@ -17,15 +17,15 @@ import re
 import time
 from pathlib import Path
 
-from kree._paths import PROJECT_ROOT
-BASE_DIR = PROJECT_ROOT
-API_CONFIG_PATH    = BASE_DIR / "config" / "api_keys.json"
+from kree.core.runtime import CONFIG_DIR
+API_CONFIG_PATH = CONFIG_DIR / "api_keys.json"
 # Aegis Security: Native Sandbox Enforcement
 import kree.core.security as security # type: ignore[import]
+from kree.core.version import MODEL_FLASH, MODEL_FLASH_LITE
 PROJECTS_DIR       = security.get_workspace_path()
 MAX_FIX_ATTEMPTS   = 4
-MODEL_PLANNER      = "gemini-2.5-flash"
-MODEL_WRITER       = "gemini-2.5-flash-lite"
+MODEL_PLANNER      = MODEL_FLASH
+MODEL_WRITER       = MODEL_FLASH_LITE
 
 
 def _get_api_key() -> str:

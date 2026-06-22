@@ -1,3 +1,5 @@
+Backup/release/
+dist/release/
 .worktrees/
 build/
 dist/
@@ -27,4 +29,26 @@ venv/
 *.temp
 *.tmp
 .temp.json
-assets/models/hey_*.onnx
+assets/models/*
+!assets/models/hey_jarvis.onnx
+# IDE / local
+.claude/
+.vscode/
+.coverage
+
+# Audio debug
+*.wav
+
+# Debug output
+out.txt
+output.txt
+pytest_out.txt
+exe_stdout.txt
+exe_stderr.txt
+
+# Local memory/config
+memory/*.json
+core/*.json
+
+# Experimental models
+*kree_v1_quantized*
