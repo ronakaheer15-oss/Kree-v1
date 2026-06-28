@@ -1,6 +1,29 @@
+from kree.core.policy_engine import ToolPolicy, RiskTier
+from pathlib import Path
+
+# --- Immutable Tool Policies ---
+DOWNLOADER_POLICY = ToolPolicy(
+    requires_intent=True,
+    requires_confirmation=True,
+    max_risk=RiskTier.HIGH,
+    allowed_paths=frozenset(), # Allow list of paths for downloads (e.g. downloads folder), handled deeply in transfer module
+    network_access=True,
+    can_delegate=False
+)
+
+OPEN_APP_POLICY = ToolPolicy(
+    requires_intent=False,
+    requires_confirmation=False,
+    max_risk=RiskTier.MEDIUM,
+    allowed_paths=frozenset(),
+    network_access=False,
+    can_delegate=True
+)
+
 TOOL_DECLARATIONS = [
     {
         "name": "trigger_macro",
+        "policy": OPEN_APP_POLICY,
         "description": (
             "Triggers a complex multi-app macro chain concurrently (e.g. 'work session', 'gaming session'). "
             "Use this precisely when the user asks to initiate a 'session' or complex workflow."
@@ -18,6 +41,7 @@ TOOL_DECLARATIONS = [
     },
     {
         "name": "open_app",
+        "policy": OPEN_APP_POLICY,
         "description": (
             "Opens any application on the Windows computer. "
             "Use this whenever the user asks to open, launch, or start any app, "
@@ -103,6 +127,7 @@ TOOL_DECLARATIONS = [
     },
     {
         "name": "downloader_updater",
+        "policy": DOWNLOADER_POLICY,
         "description": (
             "Downloads files and installs/updates software. "
             "Use this when user asks to download, install, update, upgrade, or check available updates."

@@ -3,7 +3,8 @@ from PIL import Image, ImageDraw
 import threading
 from kree.core.runtime import ASSETS_DIR
 import os
-
+import sys
+import winreg
 _FALLBACK_COLORS = {
     "listening": "#00FF00", # Green
     "processing": "#FFFF00", # Yellow
@@ -25,6 +26,36 @@ def _ensure_ico_files():
 
 def _load_icon(name):
     return Image.open(ASSETS_DIR / f"{name}.ico")
+
+def _is_run_on_startup():
+    try:
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_READ)
+        value, _ = winreg.QueryValueEx(key, "Kree")
+        winreg.CloseKey(key)
+        return True
+    except FileNotFoundError:
+        return False
+
+def _set_run_on_startup(enable):
+    key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+    if getattr(sys, 'frozen', False):
+        exe_path = sys.executable
+    else:
+        exe_path = os.path.abspath(sys.argv[0])
+    
+    try:
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_ALL_ACCESS)
+    except FileNotFoundError:
+        key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path)
+        
+    if enable:
+        winreg.SetValueEx(key, "Kree", 0, winreg.REG_SZ, f'"{exe_path}" --background')
+    else:
+        try:
+            winreg.DeleteValue(key, "Kree")
+        except FileNotFoundError:
+            pass
+    winreg.CloseKey(key)
 
 
 class SystemTrayApp:
@@ -53,6 +84,7 @@ class SystemTrayApp:
             pystray.MenuItem("Restart Audio", self._on_restart_audio),
             pystray.MenuItem("Reload Wake Word", self._on_reload_wake),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Run on Startup", self._on_toggle_startup, checked=lambda item: _is_run_on_startup()),
             pystray.MenuItem("Diagnostics", self._on_diagnostics),
             pystray.MenuItem("View Logs", self._on_view_logs),
             pystray.Menu.SEPARATOR,
@@ -112,6 +144,10 @@ class SystemTrayApp:
     def _on_view_logs(self, icon, item):
         cb = self.callbacks.get("view_logs")
         if cb: cb()
+        
+    def _on_toggle_startup(self, icon, item):
+        current = _is_run_on_startup()
+        _set_run_on_startup(not current)
         
     def _on_quit(self, icon, item):
         if self.icon:

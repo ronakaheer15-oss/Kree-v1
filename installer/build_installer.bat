@@ -32,7 +32,7 @@ if errorlevel 1 (
 )
 
 :: Check if PyInstaller dist exists
-if not exist "%SCRIPT_DIR%..\dist\Kree AI\Kree AI.exe" (
+if not exist "%SCRIPT_DIR%..\dist\Kree-v0.9.2.beta3\Kree-v0.9.2.beta3.exe" (
     echo.
     echo ERROR: PyInstaller build not found.
     echo Run build_kree.bat first to create the dist folder.
@@ -43,17 +43,17 @@ if not exist "%SCRIPT_DIR%..\dist\Kree AI\Kree AI.exe" (
 
 :: Validate Critical Dependencies
 echo Validating PyInstaller bundle...
-if not exist "%SCRIPT_DIR%..\dist\Kree AI\_internal\assets\models\" (
+if not exist "%SCRIPT_DIR%..\dist\Kree-v0.9.2.beta3\_internal\assets\models\" (
     echo ERROR: Missing assets\models folder in bundle!
     pause
     exit /b 1
 )
-if not exist "%SCRIPT_DIR%..\dist\Kree AI\_internal\stitch_core_system_dashboard\" (
+if not exist "%SCRIPT_DIR%..\dist\Kree-v0.9.2.beta3\_internal\stitch_core_system_dashboard\" (
     echo ERROR: Missing stitch_core_system_dashboard folder in bundle!
     pause
     exit /b 1
 )
-if not exist "%SCRIPT_DIR%..\dist\Kree AI\_internal\openwakeword\" (
+if not exist "%SCRIPT_DIR%..\dist\Kree-v0.9.2.beta3\_internal\openwakeword\" (
     echo ERROR: Missing openwakeword folder in bundle!
     pause
     exit /b 1

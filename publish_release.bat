@@ -5,7 +5,7 @@ echo   KREE AI GITHUB RELEASE PUBLISHER
 echo ========================================================
 echo.
 
-set "VERSION=v0.9.0-beta.1"
+set "VERSION=v0.9.2.beta3"
 set "RELEASE_DIR=dist\release"
 
 :: 1. Validate Artifacts

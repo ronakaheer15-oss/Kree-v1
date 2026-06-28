@@ -3,5 +3,5 @@
     "supabase_url": "",
     "supabase_anon_key": "",
     "github_repo": "YOUR_USERNAME/kree",
-    "kree_version": "1.0.0"
+    "kree_version": "0.9.2.beta3"
 }

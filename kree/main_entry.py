@@ -6853,11 +6853,9 @@ def main():
 
     is_background = "--background" in sys.argv
     if is_background:
-        import time
-        print("[JARVIS] ⏳ Background mode detected. Delaying startup by 25 seconds for system services...")
-        time.sleep(25)
+        print("[JARVIS] ⏳ Background mode detected.")
 
-    ui = JarvisUI("face.png", startup_hidden=True)
+    ui = JarvisUI("face.png", startup_hidden=is_background)
 
     def runner():
 

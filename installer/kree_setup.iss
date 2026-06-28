@@ -4,9 +4,9 @@
 ; Requires: Inno Setup 6+ (free from https://jrsoftware.org/isinfo.php)
 
 #define MyAppName "Kree AI"
-#define MyAppVersion "0.9.0-beta.1"
+#define MyAppVersion "0.9.2.beta3"
 #define MyAppPublisher "Kree"
-#define MyAppExeName "Kree AI.exe"
+#define MyAppExeName "Kree-v0.9.2.beta3.exe"
 #define MyAppURL "https://github.com/your-repo/Kree"
 
 [Setup]
@@ -39,12 +39,12 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 ; Bundle the entire PyInstaller dist folder
-Source: "..\dist\Kree AI\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\dist\Kree-v0.9.2.beta3\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Include the README
 Source: "..\README-INSTALL.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 ; IMPORTANT: Preserve user config on upgrade — never overwrite these
-Source: "..\dist\Kree AI\config\*"; DestDir: "{app}\config"; Flags: onlyifdoesntexist recursesubdirs skipifsourcedoesntexist
+Source: "..\dist\Kree-v0.9.2.beta3\config\*"; DestDir: "{app}\config"; Flags: onlyifdoesntexist recursesubdirs skipifsourcedoesntexist
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

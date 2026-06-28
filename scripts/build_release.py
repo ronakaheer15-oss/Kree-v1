@@ -14,7 +14,7 @@ from kree.core.version import APP_NAME, APP_VERSION
 
 
 DIST_DIR = PROJECT_ROOT / "dist"
-SOURCE_DIR = DIST_DIR / "Kree AI"
+SOURCE_DIR = DIST_DIR / f"Kree-v{APP_VERSION}"
 RELEASE_DIR = DIST_DIR / "release"
 STAGE_DIR = RELEASE_DIR / "stage"
 PACKAGE_NAME = f"Kree-AI-v{APP_VERSION}-win64.zip"
@@ -64,7 +64,7 @@ def main() -> int:
         shutil.rmtree(STAGE_DIR)
     RELEASE_DIR.mkdir(parents=True, exist_ok=True)
 
-    staged_app = STAGE_DIR / "Kree AI"
+    staged_app = STAGE_DIR / f"Kree-v{APP_VERSION}"
     _copy_tree_without_config(SOURCE_DIR, staged_app)
 
     # Include README-INSTALL.txt in the release
