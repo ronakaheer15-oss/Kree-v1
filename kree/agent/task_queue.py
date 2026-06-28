@@ -32,6 +32,22 @@ class Task:
     speak:       Any        = field(compare=False, default=None)   
     on_complete: Any        = field(compare=False, default=None)  
     cancel_flag: threading.Event = field(compare=False, default_factory=threading.Event)
+    tier:        int   = field(compare=False, default=1)
+    timeout:     float = field(compare=False, default=60.0)
+
+
+def determine_tier_and_timeout(goal: str) -> tuple[int, float]:
+    """
+    Tier 3 (Developer): 1200s timeout if goal includes project/full app/dev_agent/developer/database/git.
+    Tier 2 (Code Helper): 600s timeout if goal includes code/python/script/bug/hello world/write code/program/implement/function/scrape/develop/test.
+    Tier 1 (Quick Task): 300s timeout for all other actions.
+    """
+    g_lower = goal.lower()
+    if any(k in g_lower for k in ("project", "full app", "dev_agent", "developer", "database", "git", "complex")):
+        return 3, 1200.0
+    if any(k in g_lower for k in ("code", "python", "script", "bug", "hello world", "write code", "program", "implement", "function", "scrape", "develop", "test")):
+        return 2, 600.0
+    return 1, 300.0
 
 
 class TaskQueue:
@@ -76,9 +92,16 @@ class TaskQueue:
         priority:    TaskPriority = TaskPriority.NORMAL,
         speak:       Callable | None = None,
         on_complete: Callable | None = None,
+        tier:        int | None = None,
+        timeout:     float | None = None,
     ) -> str:
 
         task_id = str(uuid.uuid4())[:8]
+        auto_tier, auto_timeout = determine_tier_and_timeout(goal)
+        if tier is None:
+            tier = auto_tier
+        if timeout is None:
+            timeout = auto_timeout
         task    = Task(
             priority    = priority.value,
             created_at  = time.time(),
@@ -86,6 +109,8 @@ class TaskQueue:
             goal        = goal,
             speak       = speak,
             on_complete = on_complete,
+            tier        = tier,
+            timeout     = timeout,
         )
 
         with self._condition:
@@ -173,6 +198,14 @@ class TaskQueue:
 
     def _run_task(self, task: Task) -> None:
         print(f"[TaskQueue] ▶️ Running: [{task.task_id}] {task.goal[:60]}")
+        
+        def _timeout_trigger():
+            print(f"[TaskQueue] ⏰ Timeout reached for task [{task.task_id}] (Tier {task.tier}, limit {task.timeout}s). Cancelling...")
+            task.cancel_flag.set()
+
+        timer = threading.Timer(task.timeout, _timeout_trigger)
+        timer.start()
+
         try:
             executor = self._get_executor()
             result   = executor.execute(
@@ -203,6 +236,9 @@ class TaskQueue:
                 task.error  = str(e)
                 self._active_count -= 1
             print(f"[TaskQueue] ❌ Failed: [{task.task_id}] {e}")
+            
+        finally:
+            timer.cancel()
 
         with self._condition:
             self._condition.notify()

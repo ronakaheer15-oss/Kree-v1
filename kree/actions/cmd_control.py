@@ -5,14 +5,13 @@ import re
 from pathlib import Path
 
 
-from kree._paths import PROJECT_ROOT
-BASE_DIR = PROJECT_ROOT
-API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
+from kree.core.runtime import CONFIG_DIR
+API_CONFIG_PATH = CONFIG_DIR / "api_keys.json"
 
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    from kree.core import vault
+    return vault.load_api_key(API_CONFIG_PATH)
 
 
 def _get_platform() -> str:
@@ -91,26 +90,50 @@ BLOCKED_PATTERNS = [
 ]
 _BLOCKED_RE = re.compile("|".join(BLOCKED_PATTERNS), re.IGNORECASE)
 
+# ── Command chaining / injection operators ────────────────────────────────────
+# These shell metacharacters allow an attacker to append arbitrary commands
+# after a benign one.  We block them unconditionally in user/LLM-generated
+# commands.  The hardcoded WIN_COMMAND_MAP entries that legitimately use pipes
+# (e.g. "netstat -an | findstr LISTENING") bypass _is_safe() entirely.
+_CHAIN_OPERATORS_RE = re.compile(
+    r"[&|;`]"          # single & | ; or backtick
+    r"|&&"             # logical AND chain
+    r"|\|\|"           # logical OR chain
+    r"|\$\("           # subshell expansion $(...)
+)
+
 
 def _is_safe(command: str) -> tuple[bool, str]:
+    # 1. Block command-chaining / injection operators
+    chain_match = _CHAIN_OPERATORS_RE.search(command)
+    if chain_match:
+        print(f"[CMD] BLOCKED injection operator: '{chain_match.group()}' in: {command[:80]}")
+        return False, f"Blocked: command chaining operator '{chain_match.group()}' detected"
+
+    # 2. Block destructive keywords
     match = _BLOCKED_RE.search(command)
     if match:
         return False, f"Blocked pattern: '{match.group()}'"
     return True, "OK"
 
-def _ask_gemini(task: str) -> str:
+def _ask_gemini(task: str, llm_client=None) -> str:
     try:
-        import google.generativeai as genai # type: ignore[import]
-        genai.configure(api_key=_get_api_key())
-        model = genai.GenerativeModel("gemini-2.5-flash-lite")
-
         prompt = (
             f"Convert this request to a single Windows CMD command.\n"
             f"Output ONLY the command. No explanation, no markdown, no backticks.\n"
             f"If unsafe or impossible, output: UNSAFE\n\n"
             f"Request: {task}\n\nCommand:"
         )
-        response = model.generate_content(prompt)
+
+        if llm_client is not None and hasattr(llm_client, "generate_content"):
+            response = llm_client.generate_content(prompt)
+        else:
+            from kree.core.version import MODEL_FLASH_LITE
+            import google.generativeai as genai # type: ignore[import]
+            genai.configure(api_key=_get_api_key())
+            model = genai.GenerativeModel(MODEL_FLASH_LITE)
+            response = model.generate_content(prompt)
+            
         command  = response.text.strip().strip("`").strip()
         if command.startswith("```"):
             lines   = command.split("\n")
@@ -194,31 +217,46 @@ def cmd_control(
     if not task and not command:
         return "Please describe what you want to do, sir."
 
+    _from_hardcoded = False
     if not command:
         command = _find_hardcoded(task)
         if command:
-            print(f"[CMD] ⚡ Hardcoded: {command[:80]}") # type: ignore
+            _from_hardcoded = True
+            print(f"[CMD] Hardcoded: {command[:80]}") # type: ignore
         else:
-            print(f"[CMD] 🤖 Gemini fallback for: {task}")
-            command = _ask_gemini(task)
-            print(f"[CMD] ✅ Generated: {command[:80]}") # type: ignore
+            print(f"[CMD] Gemini fallback for: {task}")
+            # Dependency injection: use player's llm if available
+            llm_client = player.llm if (player and hasattr(player, "llm")) else None
+            command = _ask_gemini(task, llm_client=llm_client)
+            print(f"[CMD] Generated: {command[:80]}") # type: ignore
             if command == "UNSAFE":
                 return "I cannot generate a safe command for that request, sir."
             if command.startswith("ERROR:"):
                 return f"Could not generate command: {command}"
 
-    safe, reason = _is_safe(command)
-    if not safe:
-        return f"Blocked for safety: {reason}"
+    # Hardcoded commands are trusted; only validate LLM/user-generated commands
+    if not _from_hardcoded:
+        safe, reason = _is_safe(command)
+        if not safe:
+            return f"Blocked for safety: {reason}"
 
-    # Aegis Security: Command Override Lock
-    import kree.core.security as security # type: ignore[import]
-    if security.is_command_destructive(command):
+        # Aegis Security: Command Override Lock for all AI-generated commands
+        import kree.core.security as security # type: ignore[import]
         import ctypes
         MB_YESNO = 4
         IDYES    = 6
-        msg = f"Kree is attempting to run a potentially DESTRUCTIVE command:\n\n{command}\n\nDo you authorize this action, sir?"
-        res = ctypes.windll.user32.MessageBoxW(0, msg, "Project Aegis: SECURITY OVERRIDE", MB_YESNO | 0x30) # type: ignore
+        
+        is_destructive = security.is_command_destructive(command)
+        if is_destructive:
+            msg = f"Kree is attempting to run a potentially DESTRUCTIVE command:\n\n{command}\n\nDo you authorize this action, sir?"
+            title = "Project Aegis: SECURITY OVERRIDE"
+            icon = 0x30 # Warning icon
+        else:
+            msg = f"Kree generated the following command:\n\n{command}\n\nDo you want to run it, sir?"
+            title = "Project Aegis: Command Execution Confirmation"
+            icon = 0x40 # Information icon
+            
+        res = ctypes.windll.user32.MessageBoxW(0, msg, title, MB_YESNO | icon) # type: ignore
         if res != IDYES:
             return "Command execution aborted by user for safety."
 

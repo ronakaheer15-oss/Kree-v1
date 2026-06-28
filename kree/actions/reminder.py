@@ -3,6 +3,7 @@
 import subprocess
 import os
 import sys
+import tempfile
 from datetime import datetime
 
 
@@ -46,7 +47,7 @@ def reminder(
             if os.path.exists(pythonw):
                 python_exe = pythonw
 
-        temp_dir      = os.environ.get("TEMP", "C:\\Temp")
+        temp_dir      = os.environ.get("TEMP") or tempfile.gettempdir()
         notify_script = os.path.join(temp_dir, f"{task_name}.pyw")
         project_root  = os.path.abspath(
             os.path.join(os.path.dirname(__file__), "..")

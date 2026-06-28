@@ -1,9 +1,7 @@
 import json
 
 
-from kree._paths import PROJECT_ROOT
-BASE_DIR = PROJECT_ROOT
-CONFIG_DIR  = BASE_DIR / "config"
+from kree.core.runtime import CONFIG_DIR
 CONFIG_FILE = CONFIG_DIR / "api_keys.json"
 AUDIO_CONFIG_FILE = CONFIG_DIR / "audio_settings.json"
 TELEMETRY_CONFIG_FILE = CONFIG_DIR / "telemetry_settings.json"
@@ -12,6 +10,8 @@ EMAIL_CONFIG_FILE = CONFIG_DIR / "email_settings.json"
 
 DEFAULT_AUDIO_SETTINGS = {
     "input_device_index": None,
+    "input_device_name": None,
+    "input_device_host_api": None,
     "vad_threshold_rising": 220,
     "vad_threshold_falling": 160,
     "partial_confidence_min": 0.7,
@@ -22,6 +22,7 @@ DEFAULT_AUDIO_SETTINGS = {
     "disable_lock_screen": False,
     "kree_voice": "Kore",
     "welcome_voice_enabled": True,
+    "ptt_silence_timeout_seconds": 3.0,
 }
 
 
@@ -52,21 +53,8 @@ def config_exists() -> bool:
 
 
 def save_api_keys(gemini_api_key: str) -> None:
-    ensure_config_dir()
-
-    data: dict = {}
-    if CONFIG_FILE.exists():
-        try:
-            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            data = {}
-
-    data["gemini_api_key"] = gemini_api_key.strip()
-
-    CONFIG_FILE.write_text(
-        json.dumps(data, indent=2),
-        encoding="utf-8"
-    )
+    from kree.core import vault
+    vault.save_api_key(CONFIG_FILE, gemini_api_key)
 
 
 def load_email_settings() -> dict:
@@ -91,13 +79,11 @@ def save_email_settings(settings: dict) -> None:
 
 
 def load_api_keys() -> dict:
-    if not CONFIG_FILE.exists():
-        return {}
-    try:
-        return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-    except Exception as e:
-        print(f"❌ Failed to load api_keys.json: {e}")
-        return {}
+    from kree.core import vault
+    key = vault.load_api_key(CONFIG_FILE)
+    if key:
+        return {"gemini_api_key": key}
+    return {}
 
 
 def get_gemini_key() -> str | None:

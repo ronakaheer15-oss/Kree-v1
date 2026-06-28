@@ -14,6 +14,8 @@ if errorlevel 1 (
         set "ISCC=C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
     ) else if exist "C:\Program Files\Inno Setup 6\ISCC.exe" (
         set "ISCC=C:\Program Files\Inno Setup 6\ISCC.exe"
+    ) else if exist "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" (
+        set "ISCC=%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
     ) else (
         echo.
         echo ERROR: Inno Setup 6 is not installed.
@@ -39,6 +41,25 @@ if not exist "%SCRIPT_DIR%..\dist\Kree AI\Kree AI.exe" (
     exit /b 1
 )
 
+:: Validate Critical Dependencies
+echo Validating PyInstaller bundle...
+if not exist "%SCRIPT_DIR%..\dist\Kree AI\_internal\assets\models\" (
+    echo ERROR: Missing assets\models folder in bundle!
+    pause
+    exit /b 1
+)
+if not exist "%SCRIPT_DIR%..\dist\Kree AI\_internal\stitch_core_system_dashboard\" (
+    echo ERROR: Missing stitch_core_system_dashboard folder in bundle!
+    pause
+    exit /b 1
+)
+if not exist "%SCRIPT_DIR%..\dist\Kree AI\_internal\openwakeword\" (
+    echo ERROR: Missing openwakeword folder in bundle!
+    pause
+    exit /b 1
+)
+echo Validation passed.
+
 echo Building installer...
 "%ISCC%" "%SCRIPT_DIR%kree_setup.iss"
 if errorlevel 1 (
@@ -55,5 +76,18 @@ for %%F in ("%SCRIPT_DIR%..\dist\release\Kree-AI-Setup-*.exe") do (
     echo   %%~nxF  (%%~zF bytes)
 )
 echo.
+
+echo Generating SHA256 checksums...
+pushd "%SCRIPT_DIR%..\dist\release"
+if exist checksums.txt del checksums.txt
+for %%F in (*.exe *.zip) do (
+    certutil -hashfile "%%F" SHA256 | findstr /v "hash" >> checksums.txt
+    echo %%F >> checksums.txt
+    echo. >> checksums.txt
+)
+popd
+echo Checksums generated in dist\release\checksums.txt
+echo.
+
 pause
 exit /b 0

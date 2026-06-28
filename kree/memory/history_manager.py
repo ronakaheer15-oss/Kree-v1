@@ -1,9 +1,8 @@
 import json
 import datetime
 
-from kree._paths import PROJECT_ROOT
-BASE_DIR = PROJECT_ROOT
-MEMORY_FILE = BASE_DIR / "memory" / "kree_memory.json"
+from kree.core.runtime import HISTORY_DIR
+MEMORY_FILE = HISTORY_DIR / "kree_memory.json"
 MAX_TURNS = 100
 
 def load_memory() -> list:

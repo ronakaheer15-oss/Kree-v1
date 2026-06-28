@@ -27,13 +27,7 @@ from kree._paths import PROJECT_ROOT
 BASE_DIR = PROJECT_ROOT
 
 # Persist config (API keys) in the same folder as the .exe, not the temp folder
-def get_exe_dir():
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent
-    return PROJECT_ROOT
-
-EXE_DIR = get_exe_dir()
-CONFIG_DIR = EXE_DIR / "config"
+from kree.core.runtime import CONFIG_DIR
 API_FILE   = CONFIG_DIR / "api_keys.json"
 
 def _resolve_stitch_dir() -> Path:
@@ -70,6 +64,7 @@ def _load_ui_asset(filename: str, fallback: str = "") -> str:
         return fallback
 
 
+_BOOT_HTML_PATH = _UI_ASSET_DIR / "boot.html"
 _BOOT_HTML = _load_ui_asset(
     "boot.html",
     "<!doctype html><html><body><main>Kree AI initializing...</main></body></html>",
@@ -215,6 +210,7 @@ _BRIDGE_JS = """
 
   // ── Transcript ────────────────────────────────────────────────────────────
   window.appendTranscript = function(role, text) {
+    role = String(role).toLowerCase();
     var c = document.getElementById('kree-transcript') ||
             document.querySelector('.overflow-y-auto');
     if (!c) return;
@@ -467,9 +463,11 @@ _BRIDGE_JS = """
   window.restoreHistory = function() {
       if(window.__KREE_HISTORY__ && window.appendTranscript) {
           var tContainer = document.getElementById('kree-transcript');
-          if (tContainer) tContainer.innerHTML = '';
-          window.__KREE_HISTORY__.forEach(function(m){ window.appendTranscript(m.r, m.b); });
-          window.__KREE_HISTORY__ = null;
+          if (tContainer) {
+              tContainer.innerHTML = '';
+              window.__KREE_HISTORY__.forEach(function(m){ window.appendTranscript(m.r, m.b); });
+              window.__KREE_HISTORY__ = null;
+          }
       }
   };
 
@@ -483,7 +481,7 @@ _BRIDGE_JS = """
   function wireUI() {
     // Traffic-light dots in header
     var dots = document.querySelectorAll('header .w-3.h-3.rounded-full');
-    var acts = ['close_app','minimize_to_widget','toggle_theme'];
+    var acts = ['close_app','minimize_to_widget','maximize_app'];
     dots.forEach(function(d,i){
       if(!d.__kw__ && acts[i]){
         d.style.cursor='pointer';
@@ -501,7 +499,7 @@ _BRIDGE_JS = """
       'call':'on_call_click', 'settings':'open_settings'
     };
 
-    function updateMicUI(res) {
+    window.updateMicUI = function(res) {
         document.querySelectorAll('button').forEach(function(b) {
             if (b.textContent.trim().includes('LISTEN') || b.textContent.trim().includes('LISTENING')) {
                 if(res) {
@@ -681,61 +679,7 @@ class _DashboardAPI:
             "apiReady": api_ready 
         }
 
-    def create_user(self, handle, password, email="", name=""):
-        from kree.core.auth_manager import AuthManager
-        try:
-            return AuthManager.create_user(handle, password, email, name)
-        except Exception as e:
-            return {"ok": False, "message": str(e)}
 
-    def sign_in_user(self, handle, password):
-        from kree.core.auth_manager import AuthManager
-        import os
-        res = AuthManager.sign_in_user(handle, password)
-        if res.get("ok"):
-            self._owner._temp_password = password
-            self._owner._active_user = res["user"]
-            ak = AuthManager.get_user_api_key(res["user"]["user_id"], password)
-            if ak: os.environ["KREE_ACTIVE_API_KEY"] = ak
-        return res
-
-    def set_user_pin(self, user_id, pin):
-        from kree.core.auth_manager import AuthManager
-        return AuthManager.set_user_pin(user_id, pin)
-
-    def verify_user_pin(self, user_id, pin):
-        from kree.core.auth_manager import AuthManager
-        return AuthManager.verify_user_pin(user_id, pin)
-
-    def save_user_api_key(self, user_id, key):
-        from kree.core.auth_manager import AuthManager
-        import os
-        pwd = getattr(self._owner, '_temp_password', "")
-        res = AuthManager.save_user_api_key(user_id, key, pwd)
-        if res.get("ok"):
-            os.environ["KREE_ACTIVE_API_KEY"] = key
-        if hasattr(self._owner, '_temp_password'):
-            delattr(self._owner, '_temp_password')
-        return res
-        
-    def on_auth_flow_complete(self):
-        from kree.core.auth_manager import AuthManager
-        user = getattr(self._owner, '_active_user', None)
-        if user:
-            AuthManager.mark_login_complete(user["user_id"])
-            if hasattr(self._owner, '_on_api_setup_complete'):
-                self._owner._on_api_setup_complete()
-            self._owner._auth_injected = True
-            
-            import os
-            import json
-            auth_ok_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory", "session_auth.json")
-            try:
-                os.makedirs(os.path.dirname(auth_ok_file), exist_ok=True)
-                with open(auth_ok_file, 'w') as f:
-                    json.dump({"user": user, "status": "unlocked"}, f)
-            except Exception: pass
-        return True
 
     def verify_session_pin(self, pin):
         """V4: Lightweight mid-session PIN re-verification for sensitive tools."""
@@ -1159,6 +1103,7 @@ class _DashboardAPI:
                 qr.make(fit=True)
                 qr_img = qr.make_image(fill_color="#00DC82", back_color="#0e0e10")
                 buf = io.BytesIO()
+                # pyrefly: ignore [unexpected-keyword]
                 qr_img.save(buf, format='PNG')
                 qr_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
                 self._owner._eval(f'''try{{
@@ -1270,12 +1215,11 @@ class _DashboardAPI:
 
     def minimize_app(self):
         if self._owner._main_win:
-            self._owner._main_win.minimize()
+            self._owner._safe_win_call(self._owner._main_win, "minimize", sync=False)
         return "ok"
 
     def maximize_app(self):
-        if self._owner._main_win:
-            self._owner._main_win.toggle_fullscreen()
+        self._owner._safe_maximize_fallback()
         return "ok"
 
     def minimize_to_widget(self):
@@ -1307,6 +1251,7 @@ class _DashboardAPI:
         try:
             safe = dict(settings or {})
             cfg_save_audio_settings(safe)
+            self._owner._audio_settings = safe
             if "mic_enabled" in safe:
                 self._owner._mic_active = bool(safe.get("mic_enabled"))
             return "ok"
@@ -1353,47 +1298,7 @@ class _DashboardAPI:
         self._owner._restore_from_widget()
         return "ok"
 
-    def get_update_state(self):
-        try:
-            from kree.core.update_service import get_update_state # type: ignore[import]
-            return get_update_state()
-        except:
-            return {}
 
-    def check_for_updates(self):
-        try:
-            from kree.core.update_service import check_for_updates # type: ignore[import]
-            return check_for_updates()
-        except Exception as e:
-            return {"ok": False, "message": str(e)}
-
-    def download_update(self, version: str):
-        try:
-            from kree.core.update_service import download_update # type: ignore[import]
-            return download_update(version)
-        except Exception as e:
-            return {"ok": False, "message": str(e)}
-
-    def apply_update(self, version: str):
-        try:
-            from kree.core.update_service import apply_update # type: ignore[import]
-            return apply_update(version)
-        except Exception as e:
-            return {"ok": False, "message": str(e)}
-
-    def open_update_folder(self):
-        try:
-            from kree.core.update_service import open_update_folder # type: ignore[import]
-            return open_update_folder()
-        except:
-            return False
-
-    def save_update_server_url(self, url: str):
-        try:
-            from kree.core.update_service import save_update_settings # type: ignore[import]
-            return save_update_settings({"manifest_url": url})
-        except:
-            return {"ok": False}
 
     def on_send_message(self, text: str):
         print(f"[UI] JS triggered on_send_message with text: {text}")
@@ -1425,18 +1330,11 @@ class _DashboardAPI:
         return getattr(self._owner, "cached_procs", "[]")
 
     def close_app(self):
-        def _do_close():
-            try:
-                if self._owner._widget_win: self._owner._widget_win.destroy()
-                if self._owner._main_win: self._owner._main_win.destroy()
-            except Exception:
-                pass
-            
-            from kree.core.updater import run_installer_and_exit
-            if not run_installer_and_exit():
-                os._exit(0)
-                
-        threading.Timer(0.05, _do_close).start()
+        print("[KREE UI] JS requested close_app. Hibernating to tray.")
+        if hasattr(self._owner, '_kree_instance'):
+            self._owner._kree_instance.hibernate()
+        else:
+            self._owner.hibernate()
         return "ok"
 
     def save_api_key(self, key: str):
@@ -1565,6 +1463,12 @@ class _WidgetAPI:
     def on_call_click(self):
         return "ok"
 
+    def get_mic_state(self):
+        return self._owner._mic_active
+
+    def get_cam_state(self):
+        return self._owner._cam_active
+
 
 # ── Main UI class ─────────────────────────────────────────────────────────────
 class KreeUI:
@@ -1587,16 +1491,43 @@ class KreeUI:
         self._startup_hidden = startup_hidden
         self._widget_visible = False
         self._hotkey_thread_started = False
-        self._api_key_ready   = False
+        
+        try:
+            import kree.core.auth_store as auth_store
+            self._active_user = auth_store.get_active_user()
+            if self._active_user:
+                self._api_key_ready = auth_store.user_has_api_key(str(self._active_user.get("user_id", "")))
+            else:
+                self._api_key_ready = False
+        except Exception:
+            self._active_user = None
+            self._api_key_ready = False
+            
         self._lock_injected   = False
         self._auth_injected   = False
-        self._is_unlocked     = False
+        
+        # Check lock screen config immediately
+        self._is_unlocked = False
+        try:
+            if self._active_user:
+                from kree.memory.config_manager import AUDIO_CONFIG_FILE
+                import json
+                if AUDIO_CONFIG_FILE.exists():
+                    st = json.loads(AUDIO_CONFIG_FILE.read_text(encoding="utf-8"))
+                    if st.get("disable_lock_screen", False):
+                        self._is_unlocked = True
+                
+                from kree.core.vault import is_unlock_trusted
+                if is_unlock_trusted():
+                    self._is_unlocked = True
+        except Exception: pass
+
         self._theme_switching = False
         self._disable_backend_camera_stream = False
         self.cached_procs     = "[]"
         self.chat_history     = []
-        self._active_user     = None
         self._api             = _DashboardAPI(self)
+        self._metrics_started = False
 
     # ── Public API ────────────────────────────────────────────────────────────
     def write_log(self, text: str):
@@ -1622,6 +1553,20 @@ class KreeUI:
                     f"if(typeof appendTranscript==='function')"
                     f"appendTranscript('{role}',`{safe}`);"
                 )
+            
+            # Sync to Mobile PWA Companion
+            if hasattr(self, 'mobile_bridge') and self.mobile_bridge and self.mobile_bridge.clients:
+                loop = getattr(self, '_loop', None)
+                if loop:
+                    import asyncio
+                    asyncio.run_coroutine_threadsafe(
+                        self.mobile_bridge.broadcast({
+                            "type": "chat",
+                            "sender": "USER" if role == "user" else "KREE",
+                            "text": body
+                        }),
+                        loop
+                    )
         except Exception:
             pass
 
@@ -1644,11 +1589,15 @@ class KreeUI:
         self._eval("if(typeof setSpeaking==='function')setSpeaking(false);")
 
     def wait_for_api_key(self):
+        if not self._api_key_ready and not self._startup_hidden:
+            self.wake()  # Force reveal if missing API key (but not if hidden on startup)
         while not self._api_key_ready:
             time.sleep(0.1)
 
     def wait_for_unlock(self):
         # Hard gate: assistant runtime must not start before unlock.
+        if not self._is_unlocked and not self._startup_hidden:
+            self.wake()  # Force reveal if locked (but not if hidden on startup)
         while not self._is_unlocked:
             time.sleep(0.1)
 
@@ -1803,16 +1752,15 @@ class KreeUI:
         self._dark_mode = not self._dark_mode
         if not self._is_unlocked:
             self._auth_injected = False
-        html = _DARK_HTML if self._dark_mode else _LIGHT_HTML
+        html_path = _DARK_HTML if self._dark_mode else _LIGHT_HTML
         if self._main_win:
             try:
-                self._main_win.load_url(html.as_uri())  # type: ignore[union-attr]
-                threading.Timer(0.5, self._inject_bridge).start()
-                threading.Timer(0.75, self._restore_runtime_state).start()
+                self._safe_win_call(self._main_win, "load_url", html_path.as_uri(), sync=False)
+                # Bridge injection is handled by events.loaded callback
             except Exception:
                 pass
             finally:
-                threading.Timer(0.9, lambda: setattr(self, "_theme_switching", False)).start()
+                threading.Timer(1.5, lambda: setattr(self, "_theme_switching", False)).start()
 
     def _minimize_to_widget(self):
         # Fade out main window before switching
@@ -1840,21 +1788,21 @@ class KreeUI:
                 js_api=_WidgetAPI(self)
             )
         if self._main_win:
-            self._main_win.hide()  # type: ignore[union-attr]
+            self._safe_win_call(self._main_win, "hide", sync=False)
         if self._widget_win:
-            self._widget_win.show()  # type: ignore[union-attr]
+            self._safe_win_call(self._widget_win, "show", sync=False)
         self._widget_visible = True
 
     def _restore_from_widget(self):
         if self._widget_win:
-            self._widget_win.hide()  # type: ignore[union-attr]
+            self._safe_win_call(self._widget_win, "hide", sync=False)
         if self._main_win:
             # Pre-set opacity to 0 so the reveal feels smooth
             try:
                 self._eval("document.body.style.opacity='0';")
             except Exception:
                 pass
-            self._main_win.show()  # type: ignore[union-attr]
+            self._safe_win_call(self._main_win, "show", sync=True)
             try:
                 self._eval(
                     "document.body.style.transition='opacity 0.3s ease';"
@@ -1870,6 +1818,14 @@ class KreeUI:
         else:
             self._minimize_to_widget()
 
+    def _toggle_mic(self):
+        self._mic_active = not self._mic_active
+        try:
+            cfg_save_audio_settings({"mic_enabled": self._mic_active})
+        except Exception:
+            pass
+        self._eval(f"if(typeof window.updateMicUI==='function') window.updateMicUI({'true' if self._mic_active else 'false'});")
+
     def _start_hotkey_listener(self):
         if self._hotkey_thread_started or platform.system() != "Windows":
             return
@@ -1877,21 +1833,29 @@ class KreeUI:
         def _hotkey_loop():
             user32 = ctypes.windll.user32
             modifiers = 0x0001 | 0x0002  # MOD_ALT | MOD_CONTROL
-            hotkey_id = 0xC001
+            hotkey_id_launcher = 0xC001
+            hotkey_id_mic = 0xC002
             try:
-                if not user32.RegisterHotKey(None, hotkey_id, modifiers, 0x20):
-                    return
+                # Ctrl + Alt + Space to toggle quick launcher
+                user32.RegisterHotKey(None, hotkey_id_launcher, modifiers, 0x20)
+                # Ctrl + Alt + M to toggle microphone mute/unmute
+                user32.RegisterHotKey(None, hotkey_id_mic, modifiers, 0x4D)
+
                 msg = wintypes.MSG()
                 while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) != 0:
-                    if msg.message == 0x0312 and msg.wParam == hotkey_id:
-                        threading.Timer(0, self._toggle_quick_launcher).start()
+                    if msg.message == 0x0312:
+                        if msg.wParam == hotkey_id_launcher:
+                            threading.Timer(0, self._toggle_quick_launcher).start()
+                        elif msg.wParam == hotkey_id_mic:
+                            threading.Timer(0, self._toggle_mic).start()
                     user32.TranslateMessage(ctypes.byref(msg))
                     user32.DispatchMessageW(ctypes.byref(msg))
             except Exception:
                 pass
             finally:
                 try:
-                    user32.UnregisterHotKey(None, hotkey_id)
+                    user32.UnregisterHotKey(None, hotkey_id_launcher)
+                    user32.UnregisterHotKey(None, hotkey_id_mic)
                 except Exception:
                     pass
 
@@ -2010,8 +1974,20 @@ class KreeUI:
                 cpu = psutil.cpu_percent(interval=None)
                 ram = psutil.virtual_memory().percent
                 
-                # V4 Optimization: Disabled full process iteration to eliminate UI stutter
-                self.cached_procs = "[]"
+                # Restore Top Processes (Fast implementation to avoid stutter)
+                try:
+                    p_list = []
+                    for p in psutil.process_iter(['name', 'cpu_percent', 'memory_percent']):
+                        try:
+                            info = p.info
+                            cpu = info.get('cpu_percent', 0.0) or 0.0
+                            mem = info.get('memory_percent', 0.0) or 0.0
+                            p_list.append({'name': info.get('name', 'Unknown'), 'cpu': cpu, 'mem': mem})
+                        except: pass
+                    top_procs = sorted(p_list, key=lambda x: (x['cpu'], x['mem']), reverse=True)[:5]
+                    self.cached_procs = json.dumps(top_procs)
+                except Exception:
+                    self.cached_procs = "[]"
 
                 if self._main_win is not None:
                     self._eval(
@@ -2038,9 +2014,9 @@ class KreeUI:
                 pass
 
             hist_raw = [{"r": m["role"], "b": m["body"]} for m in self.chat_history]
-            hist_json = json.dumps(hist_raw).replace("'", "\\'")
+            hist_json = json.dumps(hist_raw)
             self._eval(
-                f"window.__KREE_HISTORY__ = JSON.parse('{hist_json}');"
+                f"window.__KREE_HISTORY__ = {hist_json};"
                 f"if(typeof restoreHistory==='function') restoreHistory();"
             )
         except Exception:
@@ -2058,36 +2034,81 @@ class KreeUI:
 
     def _on_started(self):
         """Runs inside webview GUI thread after start()."""
-        def _init_delayed():
-            # Load the full dashboard after a tiny delay so window appears instantly.
-            time.sleep(0.05)
-            html = _DARK_HTML if self._dark_mode else _LIGHT_HTML
+        def _on_page_loaded():
+            """Called by pywebview when ANY page DOM is ready."""
+            # Check which page loaded — skip if it's still boot.html
             try:
-                if self._main_win:
-                    self._main_win.load_url(html.as_uri())  # type: ignore[union-attr]
+                current_url = self._main_win.get_current_url() if self._main_win else ""
             except Exception:
-                pass
+                current_url = ""
+            print(f"[KREE UI] Page loaded — URL: {current_url}")
+            if current_url and "boot.html" in current_url:
+                print("[KREE UI] Boot page loaded — skipping bridge injection")
+                return
+            print("[KREE UI] Dashboard DOM ready — injecting bridge")
+            # Reset auth flag so auth overlay is injected into the real dashboard
+            self._auth_injected = False
+            try:
+                self._inject_bridge()
+                self._restore_runtime_state()
+                self._inject_auth_flow()
+            except Exception as e:
+                print(f"[KREE UI] Post-load injection error: {e}")
+            if not self._metrics_started:
+                self._metrics_started = True
+                threading.Thread(target=self._metrics_loop, daemon=True).start()
 
-            time.sleep(0.12)
-            self._inject_bridge()
+        # Subscribe to the loaded and closing events
+        if self._main_win:
+            self._main_win.events.loaded += _on_page_loaded
 
-            self._restore_runtime_state()
+            def _on_closing():
+                print("[KREE UI] Window close intercepted. Hibernating to tray instead.")
+                if hasattr(self, '_kree_instance'):
+                    self._kree_instance.hibernate()
+                else:
+                    self.hibernate()
+                return False
 
-            self._inject_auth_flow()
+            self._main_win.events.closing += _on_closing
 
-            threading.Thread(target=self._metrics_loop, daemon=True).start()
+        def _init_delayed():
+            # Wait for WebView2 browser control to be fully ready before navigating.
+            # For hidden windows, this can take longer than 50ms.
+            html_path = _DARK_HTML if self._dark_mode else _LIGHT_HTML
+            print(f"[KREE UI] Dashboard file: {html_path}")
+            print(f"[KREE UI] Exists: {html_path.exists()}")
+            url = html_path.as_uri()
+            max_attempts = 20  # up to ~10 seconds total
+            for attempt in range(max_attempts):
+                try:
+                    if self._main_win:
+                        self._main_win.load_url(url)
+                        print(f"[KREE UI] load_url succeeded (attempt {attempt + 1})")
+                        return
+                except Exception as e:
+                    print(f"[KREE UI] load_url attempt {attempt + 1} failed: {e}")
+                    time.sleep(0.5)
+            print("[KREE UI] ERROR: All load_url attempts failed!")
 
         threading.Thread(target=_init_delayed, daemon=True).start()
 
     def run(self):
         """Start the webview event loop (blocks calling thread)."""
         import os
-        # Auto-grant camera and mic permissions in Edge WebView2 (Windows default)
-        os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = "--use-fake-ui-for-media-stream --enable-features=WebRTC-H264WithOpenH264FFmpeg"
+        # Auto-grant camera/mic permissions + allow local file sub-resource loading
+        os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = (
+            "--use-fake-ui-for-media-stream "
+            "--enable-features=WebRTC-H264WithOpenH264FFmpeg "
+            "--allow-file-access-from-files"
+        )
+        
+        boot_uri = _BOOT_HTML_PATH.as_uri() if _BOOT_HTML_PATH.exists() else None
         
         self._main_win = webview.create_window(
             "Kree AI",
-            html=_BOOT_HTML,
+            url=boot_uri,
+            html=None if boot_uri else _BOOT_HTML,
             width=1200,
             height=800,
             frameless=True,
@@ -2096,26 +2117,79 @@ class KreeUI:
             transparent=False,
             js_api=self._api,
         )
+        
         self._start_hotkey_listener()
         webview.start(self._on_started, debug=False)
+
+    def _safe_win_call(self, win, func_name, *args, sync=False, **kwargs):
+        if not win:
+            return
+        def _do():
+            try:
+                getattr(win, func_name)(*args, **kwargs)
+            except Exception as e:
+                print(f"[KREE UI] _safe_win_call({func_name}) error: {e}")
+        native = getattr(win, "native", None)
+        if native and hasattr(native, "InvokeRequired") and hasattr(native, "BeginInvoke"):
+            try:
+                if native.InvokeRequired:
+                    import System
+                    if sync:
+                        native.Invoke(System.Action(_do))
+                    else:
+                        native.BeginInvoke(System.Action(_do))
+                    return
+            except Exception:
+                pass
+        _do()
+
+    def _safe_maximize_fallback(self):
+        if self._main_win:
+            def _do():
+                try:
+                    self._main_win.maximize()
+                except Exception:
+                    try:
+                        self._main_win.toggle_fullscreen()
+                    except Exception:
+                        pass
+            native = getattr(self._main_win, "native", None)
+            if native and hasattr(native, "InvokeRequired") and hasattr(native, "BeginInvoke"):
+                try:
+                    if native.InvokeRequired:
+                        import System
+                        native.Invoke(System.Action(_do))
+                        return
+                except Exception:
+                    pass
+            _do()
 
     def wake(self):
         """Wake UI from sleeping tray state."""
         if self._main_win:
-            try:
-                self._main_win.show()
-                # Try to restore focus
-                self._main_win.restore()
-            except Exception:
-                pass
+            self._safe_win_call(self._main_win, "show", sync=False)
+            self._safe_win_call(self._main_win, "restore", sync=False)
 
     def hibernate(self):
         """Send UI to sleeping tray state (hidden)."""
         if self._main_win:
-            try:
-                self._main_win.hide()
-            except Exception:
-                pass
+            self._safe_win_call(self._main_win, "hide", sync=False)
+
+    def lock_desktop(self):
+        return self._api.lock_desktop()
+
+    def sleep_desktop(self):
+        return self._api.sleep_desktop()
+
+    def mute_desktop(self):
+        return self._api.mute_desktop()
+
+    def take_screenshot(self):
+        return self._api.take_screenshot()
+
+    def set_clipboard(self, text):
+        return self._api.set_clipboard(text)
+
 
 
 # Backward-compatible alias

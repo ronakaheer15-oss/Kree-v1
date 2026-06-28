@@ -5,42 +5,44 @@ from kree.core.live_prompts import app_trigger_prompt
 
 async def watch_processes(live_session=None):
     """
-    Background loop that polls psutil.process_iter() every 5-10s.
+    Background loop that polls new PIDs every 10s.
     If a known trigger app is opened by the user independently, Kree will organically respond.
     """
     print("[JARVIS] 👁️ App Watcher started")
     
-    previous_apps = set()
-    
-    # Do an initial poll to populate baseline so we don't trigger everything on boot
+    # Initialize baseline PIDs
     try:
-        for p in psutil.process_iter(['name']):
-            try:
-                name = p.info.get('name')
-                if name:
-                    previous_apps.add(name.lower())
-            except Exception: pass
+        previous_pids = set(psutil.pids())
     except Exception:
-        pass
-
+        previous_pids = set()
+    
     while True:
-        await asyncio.sleep(8)
+        await asyncio.sleep(10)
         if not live_session:
             continue
             
-        current_apps = set()
         try:
-            for p in psutil.process_iter(['name']):
-                try:
-                    name = p.info.get('name')
-                    if name:
-                        current_apps.add(name.lower())
-                except Exception: pass
+            current_pids = set(psutil.pids())
         except Exception:
-            pass
+            continue
             
-        new_apps = current_apps - previous_apps
-        previous_apps = current_apps
+        new_pids = current_pids - previous_pids
+        previous_pids = current_pids
+        
+        if not new_pids:
+            continue
+            
+        new_apps = set()
+        for pid in new_pids:
+            try:
+                p = psutil.Process(pid)
+                name = p.name()
+                if name:
+                    new_apps.add(name.lower())
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+            except Exception:
+                pass
         
         if not new_apps:
             continue

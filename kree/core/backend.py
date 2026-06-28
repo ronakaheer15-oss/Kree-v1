@@ -22,9 +22,8 @@ import platform
 import threading
 
 # ── Resolve paths ─────────────────────────────────────────────────────────────
-from kree._paths import PROJECT_ROOT
-BASE_DIR = PROJECT_ROOT
-SERVICE_KEYS_PATH = BASE_DIR / "config" / "service_keys.json"
+from kree.core.runtime import CONFIG_DIR
+SERVICE_KEYS_PATH = CONFIG_DIR / "service_keys.json"
 logger = logging.getLogger(__name__)
 
 # ── Lazy Supabase client ──────────────────────────────────────────────────────
@@ -34,9 +33,28 @@ _initialized = False
 
 def _load_service_keys() -> dict:
     try:
-        with open(SERVICE_KEYS_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
+        from kree.core.vault import decrypt_data, encrypt_data
+        
+        if not SERVICE_KEYS_PATH.exists():
+            return {}
+            
+        raw = SERVICE_KEYS_PATH.read_bytes()
+        
+        # Try JSON parsing. If it's plaintext, auto-migrate to encrypted format.
+        if raw.startswith(b'{'):
+            data = json.loads(raw.decode('utf-8'))
+            try:
+                encrypted = encrypt_data(raw.decode('utf-8'))
+                SERVICE_KEYS_PATH.write_bytes(encrypted)
+            except Exception as e:
+                logger.warning("Failed to auto-encrypt service keys: %s", e)
+            return data
+            
+        # Otherwise, decrypt
+        decrypted = decrypt_data(raw)
+        return json.loads(decrypted)
+    except Exception as e:
+        logger.warning("Failed to load service keys: %s", e)
         return {}
 
 

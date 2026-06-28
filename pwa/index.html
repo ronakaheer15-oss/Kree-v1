@@ -24,12 +24,27 @@
     <div id="status-pill" class="status-pill disconnected">○ OFFLINE</div>
   </header>
 
-  <!-- ══════ INSTALL PROMPT ══════ -->
-  <div id="install-banner" class="install-banner" style="display:none;">
-    <div class="install-banner-inner">
-      <span>📲 Install Kree for the best experience</span>
-      <button id="install-btn" class="kree-btn sm primary">Add to Home Screen</button>
-      <button class="install-dismiss" onclick="dismissInstall()">&times;</button>
+  <!-- ══════ FULLSCREEN INSTALL GUIDE ══════ -->
+  <div id="install-guide" class="install-guide" style="display:none;">
+    <div class="install-guide-card">
+      <div class="install-guide-icon">
+        <div class="kree-logo lg">K</div>
+      </div>
+      <h2 class="install-guide-title">SYSTEM LINK ESTABLISHED</h2>
+      <p class="install-guide-desc">For full system integration, native notifications, and persistent background connection, Kree must be installed as an application.</p>
+      
+      <div class="install-steps" id="install-steps-android" style="display:none;">
+        <div class="install-step">Tap the button below to install directly</div>
+        <button id="install-btn-native" class="kree-btn primary">INSTALL KREE</button>
+      </div>
+
+      <div class="install-steps" id="install-steps-ios" style="display:none;">
+        <div class="install-step">1. Tap the <svg style="width:16px;height:16px;vertical-align:middle;margin:0 4px;fill:var(--text);" viewBox="0 0 24 24"><path d="M16 5l-1.42 1.42-1.59-1.59V16h-2V4.83L9.42 6.42 8 5l4-4 4 4zm4 5v11c0 1.1-.9 2-2 2H6c-1.1 0-2-.9-2-2V10c0-1.1.9-2 2-2h3v2H6v11h12V10h-3V8h3c1.1 0 2 .9 2 2z"/></svg> <b>Share</b> button below</div>
+        <div class="install-step">2. Select <span class="badge outline">Add to Home Screen</span></div>
+        <div class="install-step">3. Launch Kree from your Home Screen</div>
+      </div>
+      
+      <button class="kree-btn outline" onclick="dismissInstallGuide()" style="margin-top:20px;">SKIP FOR NOW</button>
     </div>
   </div>
 

@@ -24,14 +24,13 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 
-from kree._paths import PROJECT_ROOT
-BASE_DIR = PROJECT_ROOT
-API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
+from kree.core.runtime import CONFIG_DIR
+API_CONFIG_PATH = CONFIG_DIR / "api_keys.json"
 
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    from kree.core import vault
+    return vault.load_api_key(API_CONFIG_PATH)
 
 
 def _parse_date(raw: str) -> str:
@@ -67,7 +66,8 @@ def _parse_date(raw: str) -> str:
     try:
         import google.generativeai as genai
         genai.configure(api_key=_get_api_key())
-        model    = genai.GenerativeModel("gemini-2.5-flash-lite")
+        from kree.core.version import MODEL_FLASH_LITE
+        model    = genai.GenerativeModel(MODEL_FLASH_LITE)
         today_str = today.strftime("%Y-%m-%d")
         response = model.generate_content(
             f"Today is {today_str}. Convert this date to YYYY-MM-DD format: '{raw}'. "
@@ -175,10 +175,10 @@ def _parse_flights_with_gemini(
     Returns list of flight dicts.
     """
     import google.generativeai as genai
-
     genai.configure(api_key=_get_api_key())
+    from kree.core.version import MODEL_FLASH
     model = genai.GenerativeModel(
-        model_name="gemini-2.5-flash",
+        model_name=MODEL_FLASH,
         system_instruction=(
             "You are a flight data extraction expert. "
             "Extract flight information from raw webpage text. "

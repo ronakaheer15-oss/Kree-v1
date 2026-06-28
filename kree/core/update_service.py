@@ -20,17 +20,15 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
-import requests  # type: ignore[import]
-
 from kree.core.version import APP_NAME, APP_VERSION  # type: ignore[import]
 
 
 from kree._paths import PROJECT_ROOT
+from kree.core.runtime import CONFIG_DIR, APP_DATA_DIR
 BASE_DIR = PROJECT_ROOT
-CONFIG_DIR = BASE_DIR / "config"
 UPDATE_STATE_FILE = CONFIG_DIR / "update_state.json"
 UPDATE_SETTINGS_FILE = CONFIG_DIR / "update_settings.json"
-UPDATE_CACHE_DIR = BASE_DIR / "updates"
+UPDATE_CACHE_DIR = APP_DATA_DIR / "updates"
 
 DEFAULT_UPDATE_SETTINGS: dict[str, Any] = {
     "manifest_url": "",
@@ -125,6 +123,32 @@ def _checksum_sha256(path: Path) -> str:
 
 def _normalize_manifest(raw: dict[str, Any]) -> dict[str, Any]:
     manifest = dict(raw or {})
+    
+    # ── GitHub Releases API Support ──
+    if "tag_name" in manifest and "assets" in manifest:
+        version = str(manifest.get("tag_name", "")).lstrip("v").strip()
+        notes = str(manifest.get("body", "")).strip()
+        published_at = str(manifest.get("published_at", "")).strip()
+        
+        # Find the zip asset for the download URL
+        download_url = ""
+        for asset in manifest.get("assets", []):
+            if str(asset.get("name", "")).endswith(".zip"):
+                download_url = str(asset.get("browser_download_url", "")).strip()
+                break
+                
+        return {
+            "name": str(manifest.get("name") or APP_NAME),
+            "version": version,
+            "download_url": download_url,
+            "package_type": "zip",
+            "checksum": "",  # GitHub releases don't typically embed a checksum in the main payload body
+            "notes": notes,
+            "published_at": published_at,
+            "manifest_url": str(manifest.get("manifest_url") or "").strip(),
+        }
+    
+    # ── Legacy Custom Manifest Support ──
     version = str(manifest.get("version") or manifest.get("latest_version") or "").strip()
     download_url = str(manifest.get("download_url") or manifest.get("package_url") or "").strip()
     package_type = str(manifest.get("package_type") or "zip").strip().lower() or "zip"
@@ -148,6 +172,7 @@ def _normalize_manifest(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def _fetch_manifest(manifest_url: str) -> dict[str, Any]:
+    import requests
     if not manifest_url:
         raise ValueError("No manifest URL has been configured.")
 
@@ -171,7 +196,12 @@ def _resolve_manifest_url(manifest_url: str | None = None) -> str:
     configured = str(settings.get("manifest_url") or "").strip()
     if configured:
         return configured
-    return os.environ.get("KREE_UPDATE_MANIFEST_URL", "").strip()
+    env_url = os.environ.get("KREE_UPDATE_MANIFEST_URL", "").strip()
+    if env_url:
+        return env_url
+        
+    # Default to the official Kree AI GitHub repository
+    return "https://api.github.com/repos/ronakaheer15-oss/Kree-v1/releases/latest"
 
 
 def get_update_state() -> dict[str, Any]:
@@ -226,6 +256,7 @@ def check_for_updates(manifest_url: str | None = None) -> dict[str, Any]:
 
 
 def _download_to_file(download_url: str, destination: Path) -> Path:
+    import requests
     response = requests.get(download_url, stream=True, timeout=30)
     response.raise_for_status()
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -318,6 +349,15 @@ def apply_update(download_path: str | None = None) -> dict[str, Any]:
     package_path = Path(path_text)
     if not package_path.exists():
         return {"ok": False, "status": "The downloaded update file could not be found.", "error": "missing file"}
+
+    checksum = str(state.get("checksum") or "").strip().lower()
+    if checksum:
+        try:
+            actual = _checksum_sha256(package_path)
+            if actual.lower() != checksum:
+                return {"ok": False, "status": "Security alert: Checksum validation failed for update file.", "error": "checksum mismatch"}
+        except Exception as e:
+            return {"ok": False, "status": f"Could not verify update checksum: {e}", "error": "verification error"}
 
     try:
         helper = _build_update_helper(package_path, BASE_DIR, os.getpid())

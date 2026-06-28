@@ -11,6 +11,17 @@ _OVERRIDE_MARKER = re.compile(r"\[\s*SYSTEM\s+OVERRIDE\s*\]", re.IGNORECASE)
 def _clean_prompt_value(value: Any, max_chars: int) -> str:
     text = _CONTROL_CHARS.sub(" ", str(value or ""))
     text = _OVERRIDE_MARKER.sub("", text)
+    # Filter common prompt injection/instruction override patterns
+    injection_patterns = [
+        r"ignore\s+(?:all\s+)?instructions",
+        r"forget\s+(?:all\s+)?instructions",
+        r"forget\s+(?:all\s+)?previous",
+        r"ignore\s+(?:all\s+)?previous",
+        r"you\s+are\s+now",
+        r"instead\s+of",
+    ]
+    for pattern in injection_patterns:
+        text = re.sub(pattern, "", text, flags=re.IGNORECASE)
     text = _WHITESPACE.sub(" ", text).strip()
     if len(text) <= max_chars:
         return text

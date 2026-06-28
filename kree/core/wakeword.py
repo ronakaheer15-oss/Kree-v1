@@ -22,20 +22,38 @@ import importlib.util
 import numpy as np
 from pathlib import Path
 
-# ── Constants ─────────────────────────────────────────────────────────────────
-import sys as _sys
-from kree.core.runtime import BUNDLE_DIR
+import sys
+import logging
+import traceback as _tb
+from kree.core.runtime import BUNDLE_DIR, APP_DATA_DIR, LOG_DIR
 from kree._paths import PROJECT_ROOT
 
-VOICEPRINT_DIR = BUNDLE_DIR / "assets" / "voiceprint"
+_wake_logger = logging.getLogger("KreeWake")
+if not _wake_logger.handlers:
+    try:
+        _wh = logging.FileHandler(str(LOG_DIR / "startup.log"), encoding="utf-8")
+        _wh.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+        _wake_logger.addHandler(_wh)
+        _wake_logger.setLevel(logging.DEBUG)
+    except Exception:
+        pass
+
+def _wlog(msg):
+    print(msg)
+    try:
+        _wake_logger.info(msg)
+    except Exception:
+        pass
+
+VOICEPRINT_DIR = APP_DATA_DIR / "voiceprint"
 VOICEPRINT_FILE = VOICEPRINT_DIR / "owner.npy"
 
 # ── Custom Model Path ────────────────────────────────────────────────────────
-CUSTOM_ONNX_PATH = BUNDLE_DIR / "assets" / "models" / "hey_kree.onnx"
+CUSTOM_ONNX_PATH = BUNDLE_DIR / "assets" / "models" / "hey_jarvis.onnx"
 
 # In frozen mode, openwakeword resources are bundled at _MEIPASS/openwakeword/resources
 # In dev mode, discover them from the installed openwakeword package.
-if getattr(_sys, "frozen", False):
+if getattr(sys, "frozen", False):
     VENV_MODEL_DIR = BUNDLE_DIR / "openwakeword" / "resources" / "models"
 else:
     _oww_spec = importlib.util.find_spec("openwakeword")
@@ -58,14 +76,14 @@ WAKE_PARTIAL = "partial"  # ears only, no UI, no chime
 WAKE_PRIORITY = "priority"  # instant, no greeting
 
 # ── Tuning ────────────────────────────────────────────────────────────────────
-THRESHOLD = 0.15                  # Extremely sensitive for far-field (AGC limits false positives)
+THRESHOLD = 0.08                  # Lowered for testing — built-in hey_jarvis often scores below 0.15
 ACTIVATION_COUNT = 1              # Fires instantly above threshold. Buffer is 2560 (160ms), 2 is too long.
 MIN_WAKE_INTERVAL_SEC = 3.0       # Smart cooldown between triggers
 VOICE_SIMILARITY_THRESHOLD = 0.75 # Resemblyzer cosine similarity cutoff
 AMBIENT_CHECK_INTERVAL = 30       # Seconds between ambient noise measurements
 WHISPER_VOLUME_THRESHOLD = 500    # Below this RMS → whisper mode
 ENROLL_DURATION_SEC = 10          # Voice enrollment recording length
-FRAMES_PER_BUFFER = 2560          # Bigger chunks = more accurate detection
+FRAMES_PER_BUFFER = 1280          # Native chunk size for openwakeword
 
 
 class VoiceFingerprint:
@@ -197,7 +215,12 @@ class WakeWordDetector:
             on_wake_callback: Function called with (trigger_type: str, whisper: bool)
         """
         self.on_wake = on_wake_callback
+        self.callback = on_wake_callback
+        self.threshold = THRESHOLD
+        self.selected_idx = None
         self.is_running = False
+        self.is_ready = False
+        self._last_heartbeat = time.time()
         self._last_wake_time = 0.0
         self._ambient_rms = 0
         self._last_ambient_check = 0.0
@@ -206,28 +229,18 @@ class WakeWordDetector:
         self._model_name = None
         self._model_load_attempted = False
 
+        # ── Boot synchronization events ──
+        self.model_ready = threading.Event()
+        self.mic_ready = threading.Event()
+        self._boot_failed = False  # Set True on unrecoverable failure
+
         if self._voice_fp.is_available and not self._voice_fp.is_enrolled:
             print("[KREE VOICE] No voiceprint found. Say 'enroll my voice' to register.")
 
     def _candidate_models(self):
-        candidates = []
-
         if CUSTOM_ONNX_PATH.exists():
-            candidates.append(str(CUSTOM_ONNX_PATH))
-
-        for model_name in DEFAULT_WAKEWORD_MODELS:
-            venv_model_path = VENV_MODEL_DIR / f"{model_name}.onnx"
-            if venv_model_path.exists():
-                candidates.append(str(venv_model_path))
-            candidates.append(model_name)
-
-        unique_candidates = []
-        seen = set()
-        for candidate in candidates:
-            if candidate not in seen:
-                seen.add(candidate)
-                unique_candidates.append(candidate)
-        return unique_candidates
+            return [str(CUSTOM_ONNX_PATH)]
+        return ["hey_jarvis"]
 
     def _ensure_model(self) -> bool:
         if self.model is not None:
@@ -236,29 +249,48 @@ class WakeWordDetector:
             return False
 
         self._model_load_attempted = True
+        _wlog("[WAKE] _ensure_model: starting model load")
 
-        from openwakeword.model import Model
+        try:
+            _wlog("[WAKE] Importing openwakeword.model...")
+            from openwakeword.model import Model
+            _wlog("[WAKE] openwakeword.model imported successfully")
+        except Exception as e:
+            _wlog(f"[WAKE] FATAL: Failed to import openwakeword.model: {e}")
+            _wlog(f"[WAKE] Traceback: {_tb.format_exc()}")
+            return False
+
+        candidates = self._candidate_models()
+        _wlog(f"[WAKE] Candidate models: {candidates}")
+        _wlog(f"[WAKE] CUSTOM_ONNX_PATH: {CUSTOM_ONNX_PATH} (exists={CUSTOM_ONNX_PATH.exists()})")
+        _wlog(f"[WAKE] VENV_MODEL_DIR: {VENV_MODEL_DIR} (exists={VENV_MODEL_DIR.exists() if VENV_MODEL_DIR.exists() else False})")
+        _wlog(f"[WAKE] BUNDLE_DIR: {BUNDLE_DIR}")
+        _wlog(f"[WAKE] Frozen: {getattr(sys, 'frozen', False)}")
 
         last_error = None
-        for model_spec in self._candidate_models():
+        for model_spec in candidates:
             try:
                 if os.path.exists(model_spec):
-                    print(f"[KREE WAKE] Loading wake model file: {Path(model_spec).name}")
+                    _wlog(f"[WAKE] Loading wake model file: {Path(model_spec).name} ({model_spec})")
                 else:
-                    print(f"[KREE WAKE] Loading built-in wake model: {model_spec}")
+                    _wlog(f"[WAKE] Loading built-in wake model: {model_spec}")
 
                 self.model = Model(
                     wakeword_models=[model_spec],
                     inference_framework="onnx"
                 )
                 self._model_name = next(iter(self.model.models.keys()), None)
-                print(f"[KREE WAKE] OpenWakeWord model loaded (ONNX): {self._model_name}")
+                _wlog(f"[WAKE] Model loaded successfully: {self._model_name}")
+                self.model_ready.set()
                 return True
             except Exception as e:
                 last_error = e
+                _wlog(f"[WAKE] Model load failed for '{model_spec}': {e}")
+                _wlog(f"[WAKE] Traceback: {_tb.format_exc()}")
                 self.model = None
 
-        print(f"[KREE WAKE] WakeWord model load failed: {last_error}")
+        _wlog(f"[WAKE] ALL MODELS FAILED. Last error: {last_error}")
+        self.model_ready.set()  # Fail-safe: always release waiters
         return False
 
     def start(self):
@@ -270,6 +302,32 @@ class WakeWordDetector:
 
     def stop(self):
         self.is_running = False
+
+    def wait_for_mic(self, timeout: float = 30.0) -> bool:
+        """Block until the mic is confirmed open or timeout expires.
+
+        Returns True if mic is ready, False if boot failed or timed out.
+        Uses dynamic sub-timeouts: ~8s for model, remainder for mic scan.
+        """
+        MODEL_TIMEOUT = min(8.0, timeout * 0.4)
+        _wlog(f"[WAKE] wait_for_mic: waiting up to {MODEL_TIMEOUT:.0f}s for model...")
+        self.model_ready.wait(timeout=MODEL_TIMEOUT)
+
+        if self._boot_failed:
+            _wlog("[WAKE] wait_for_mic: boot failed during model load")
+            return False
+
+        remaining = max(timeout - MODEL_TIMEOUT, 2.0)
+        _wlog(f"[WAKE] wait_for_mic: model phase done, waiting up to {remaining:.0f}s for mic...")
+        self.mic_ready.wait(timeout=remaining)
+
+        if self._boot_failed:
+            _wlog("[WAKE] wait_for_mic: boot failed during mic acquisition")
+            return False
+
+        ready = self.mic_ready.is_set() and self.is_ready
+        _wlog(f"[WAKE] wait_for_mic: result={'READY' if ready else 'NOT READY'}")
+        return ready
 
     def enroll_owner_voice(self):
         """Public method to trigger voice enrollment."""
@@ -290,22 +348,387 @@ class WakeWordDetector:
     def _run_loop(self):
         import pyaudio
 
+        _wlog("[WAKE] _run_loop: Thread started")
+        self.is_ready = False
+
+        try:
+            self._run_loop_inner(pyaudio)
+        except Exception as e:
+            _wlog(f"[WAKE] _run_loop unhandled error: {e}")
+            _wlog(f"[WAKE] Traceback: {_tb.format_exc()}")
+        finally:
+            # Fail-safe: ALWAYS release waiters to prevent deadlock
+            if not self.model_ready.is_set():
+                self._boot_failed = True
+                self.model_ready.set()
+            if not self.mic_ready.is_set():
+                self._boot_failed = True
+                self.mic_ready.set()
+            _wlog(f"[WAKE] _run_loop exited (boot_failed={self._boot_failed})")
+
+    def _run_loop_inner(self, pyaudio):
+        """Inner implementation of the detection loop, wrapped by _run_loop for fail-safe event release."""
+
         if not self._ensure_model():
+            _wlog("[WAKE] ABORT: Model failed to load. Wake word thread exiting.")
             return
 
+        if threading.current_thread() != self._thread:
+            _wlog("[WAKE] Thread superseded during model load. Exiting.")
+            return
+
+        _wlog(f"[WAKE] Opening microphone (rate=16000, channels=1, buffer={FRAMES_PER_BUFFER})...")
         pa = pyaudio.PyAudio()
         try:
-            stream = pa.open(
-                rate=16000,
-                channels=1,
-                format=pyaudio.paInt16,
-                input=True,
-                frames_per_buffer=FRAMES_PER_BUFFER
-            )
+
+
+            from kree.memory.config_manager import load_audio_settings, save_audio_settings, AUDIO_CONFIG_FILE
+            
+            BUILD_VERSION = "KREE_BETA_BUILD_003"
+            _wlog(f"[WAKE] BUILD_VERSION = \"{BUILD_VERSION}\"")
+            _wlog(f"[WAKE] Config Path: {AUDIO_CONFIG_FILE}")
+            
+            audio_settings = load_audio_settings()
+            saved_idx = audio_settings.get("input_device_index")
+            saved_device_name = audio_settings.get("input_device_name")
+            saved_device_host_api = audio_settings.get("input_device_host_api")
+
+            # ── Validate saved device index: reject output-only or missing devices ──
+            if saved_idx is not None:
+                try:
+                    dev_info = pa.get_device_info_by_index(int(saved_idx))
+                    if int(dev_info.get("maxInputChannels", 0)) < 1:
+                        _wlog(f"[WAKE] Saved device {saved_idx} ({dev_info.get('name', '?')}) has no input channels — ignoring")
+                        saved_idx = None
+                except Exception:
+                    _wlog(f"[WAKE] Saved device index {saved_idx} not found on this system — ignoring")
+                    saved_idx = None
+
+            # ── Device fingerprint matching: resolve by name + host_api ──
+            fingerprint_idx = None
+            if saved_device_name and saved_idx is None:
+                _wlog(f"[WAKE] Attempting device fingerprint match: name='{saved_device_name}', host_api='{saved_device_host_api}'")
+                for i in range(pa.get_device_count()):
+                    try:
+                        di = pa.get_device_info_by_index(i)
+                        if int(di.get('maxInputChannels', 0)) < 1:
+                            continue
+                        di_name = di.get('name', '')
+                        di_host_api = None
+                        try:
+                            di_host_api = pa.get_host_api_info_by_index(int(di.get('hostApi', -1))).get('name')
+                        except Exception:
+                            pass
+                        # Exact name + host_api match
+                        if di_name == saved_device_name and (saved_device_host_api is None or di_host_api == saved_device_host_api):
+                            fingerprint_idx = i
+                            _wlog(f"[WAKE] Fingerprint exact match: device {i} '{di_name}' [{di_host_api}]")
+                            break
+                        # Fuzzy: name contains saved name (handles driver suffix changes)
+                        if saved_device_name.lower() in di_name.lower():
+                            fingerprint_idx = i
+                            _wlog(f"[WAKE] Fingerprint fuzzy match: device {i} '{di_name}' [{di_host_api}]")
+                            # Don't break — keep looking for exact match
+                    except Exception:
+                        pass
+                if fingerprint_idx is not None:
+                    saved_idx = fingerprint_idx
+                    _wlog(f"[WAKE] Fingerprint resolved to device index: {saved_idx}")
+
+            try:
+                default_input = pa.get_default_input_device_info()
+                default_idx = default_input.get("index")
+                default_name = default_input.get("name", "unknown")
+            except Exception as ex:
+                _wlog(f"[WAKE] Error getting default input device: {ex}")
+                default_idx = None
+                default_name = "unknown"
+
+            target_idx = saved_idx if saved_idx is not None else default_idx
+            
+            # Print logging enhancements requested by user
+            _wlog(f"[WAKE] saved_idx: {saved_idx} (fingerprint: name='{saved_device_name}', api='{saved_device_host_api}')")
+            _wlog(f"[WAKE] default_idx: {default_idx} ({default_name})")
+            _wlog(f"[WAKE] selected_idx: {target_idx}")
+
+            # ── Build ordered list of devices to try ──
+            devices_to_try = []
+            
+            # 1. Try saved/selected device first
+            if target_idx is not None:
+                devices_to_try.append(int(target_idx))
+            
+            # 2. Collect all input devices by API
+            for i in range(pa.get_device_count()):
+                try:
+                    di = pa.get_device_info_by_index(i)
+                    if int(di.get('maxInputChannels', 0)) < 1:
+                        continue
+                    name = di.get('name', '').lower()
+                    if 'stereo mix' in name:
+                        continue
+                    idx = di.get('index')
+                    if idx not in devices_to_try:
+                        devices_to_try.append(idx)
+                except Exception:
+                    pass
+            
+            _wlog(f"[WAKE] Device try order: {devices_to_try}")
+
+            def _try_open_and_check(pa_inst, dev_idx, rate, channels, buf_size):
+                """Open a stream, read ~1.5s, return (stream, rms_variance, max_peak, avg_rms) or None on failure.
+                rms_variance distinguishes real audio (high variance) from static (near-zero variance)."""
+                try:
+                    info = pa_inst.get_device_info_by_index(int(dev_idx))
+                    dev_name = info.get('name', 'unknown')
+                    host_api = info.get('hostApi')
+                    if host_api is not None:
+                        try:
+                            api_info = pa_inst.get_host_api_info_by_index(int(host_api))
+                            api_name = api_info.get('name', '?')
+                        except Exception:
+                            api_name = 'unknown'
+                    else:
+                        api_name = 'unknown'
+                    _wlog(f"[WAKE] Trying device {dev_idx} [{api_name}]: {dev_name} at {rate}Hz/{channels}ch...")
+                    
+                    s = pa_inst.open(
+                        rate=rate, channels=channels, format=pyaudio.paInt16,
+                        input=True, input_device_index=int(dev_idx),
+                        frames_per_buffer=buf_size
+                    )
+                    
+                    total_frames = int(rate / buf_size * 1.8)
+                    skip_frames = int(rate / buf_size * 0.5)
+                    rms_values = []
+                    max_peak = 0
+                    for i in range(total_frames):
+                        data = s.read(buf_size, exception_on_overflow=False)
+                        if i < skip_frames:
+                            continue
+                        arr = np.frombuffer(data, dtype=np.int16)
+                        if channels > 1:
+                            arr = arr.reshape(-1, channels).mean(axis=1).astype(np.int16)
+                        peak = int(np.max(np.abs(arr)))
+                        rms = int(np.sqrt(np.mean(arr.astype(np.float64) ** 2)))
+                        rms_values.append(rms)
+                        if peak > max_peak:
+                            max_peak = peak
+                    
+                    unique_rms = len(set(rms_values))
+                    # Reject repeating digital loops (DirectSound driver bugs) and silence
+                    is_loop = (unique_rms <= len(rms_values) * 0.5) and (len(rms_values) > 5)
+                    
+                    avg_rms = int(np.mean(rms_values)) if rms_values else 0
+                    # Variance of RMS values — real audio has HIGH variance, static has ~0
+                    rms_var = int(np.var(rms_values)) if (len(rms_values) > 1 and not is_loop) else 0
+                    
+                    _wlog(f"[WAKE]   -> avg_RMS={avg_rms}, max_Peak={max_peak}, rms_variance={rms_var} (unique_rms={unique_rms}{', LOOP REJECTED' if is_loop else ''})")
+                    return (s, rms_var, max_peak, avg_rms, dev_name, rate, channels)
+                except Exception as e:
+                    import traceback
+                    _wlog(f"[WAKE]   -> Failed: {type(e).__name__}: {e}\n{traceback.format_exc()}")
+                    return None
+
+            # ── Try each device at 16kHz first, then at native rate ──
+            stream = None
+            native_buffer = FRAMES_PER_BUFFER
+            native_rate = 16000
+            native_channels = 1
+            needs_resample = False
+            best_result = None  # (stream, variance, peak, rms, name, rate, channels)
+            
+            for try_idx in devices_to_try:
+                try:
+                    try_info = pa.get_device_info_by_index(int(try_idx))
+                    dev_native_rate = int(try_info.get("defaultSampleRate", 44100))
+                    dev_channels = min(int(try_info.get("maxInputChannels", 1)), 2)  # Cap at stereo
+                except Exception:
+                    _wlog(f"[WAKE] Skipping invalid device {try_idx}")
+                    continue
+                
+                # Attempt 1: Try at 16kHz/1ch (ideal — no resampling needed)
+                result = _try_open_and_check(pa, try_idx, 16000, 1, FRAMES_PER_BUFFER)
+                
+                if result and result[1] > 100:  # variance > 100 = real varying audio
+                    stream = result[0]
+                    native_rate = result[5]
+                    native_channels = result[6]
+                    native_buffer = FRAMES_PER_BUFFER
+                    needs_resample = False
+                    target_name = result[4]
+                    target_idx = try_idx
+                    _wlog(f"[WAKE] ✓ Selected device {try_idx}: {result[4]} at 16kHz (variance={result[1]}, RMS={result[3]}, Peak={result[2]})")
+                    break
+                else:
+                    # Close the static/silent stream
+                    if result:
+                        try:
+                            result[0].stop_stream()
+                            result[0].close()
+                        except Exception:
+                            pass
+                
+                # Attempt 2: Try at device native rate (needed for WASAPI)
+                if dev_native_rate != 16000:
+                    native_buf = int(dev_native_rate * FRAMES_PER_BUFFER / 16000)  # Scale buffer proportionally
+                    result = _try_open_and_check(pa, try_idx, dev_native_rate, dev_channels, native_buf)
+                    
+                    if result and result[1] > 100:
+                        stream = result[0]
+                        native_rate = result[5]
+                        native_channels = result[6]
+                        native_buffer = native_buf
+                        needs_resample = (native_rate != 16000)
+                        target_name = result[4]
+                        target_idx = try_idx
+                        _wlog(f"[WAKE] ✓ Selected device {try_idx}: {result[4]} at {native_rate}Hz (variance={result[1]}, RMS={result[3]}, Peak={result[2]}, resample={'yes' if needs_resample else 'no'})")
+                        break
+                    else:
+                        if result:
+                            try:
+                                result[0].stop_stream()
+                                result[0].close()
+                            except Exception:
+                                pass
+            
+            if stream is None:
+                _wlog("[WAKE] WARNING: No device with real audio found. Falling back to default...")
+                for try_idx in devices_to_try:
+                    try:
+                        stream = pa.open(
+                            rate=16000, channels=1, format=pyaudio.paInt16,
+                            input=True, input_device_index=int(try_idx),
+                            frames_per_buffer=FRAMES_PER_BUFFER
+                        )
+                        native_rate = 16000
+                        native_channels = 1
+                        native_buffer = FRAMES_PER_BUFFER
+                        needs_resample = False
+                        target_name = pa.get_device_info_by_index(int(try_idx)).get('name', 'unknown')
+                        target_idx = try_idx
+                        _wlog(f"[WAKE] Fallback: opened device {try_idx}: {target_name}")
+                        break
+                    except Exception:
+                        continue
+            
+            # ── Warm retry for fresh PCs with slow driver init ──
+            if stream is None:
+                MAX_RETRIES = 5
+                RETRY_DELAY = 2.0
+                _wlog(f"[WAKE] No audio device found. Retrying up to {MAX_RETRIES} times ({RETRY_DELAY}s interval)...")
+                _wlog("[WAKE] (Fresh PCs often have slow audio driver initialization)")
+                for retry in range(1, MAX_RETRIES + 1):
+                    if not self.is_running:
+                        _wlog("[WAKE] Retry aborted: detector stopped")
+                        break
+                    time.sleep(RETRY_DELAY)
+                    _wlog(f"[WAKE] Retry {retry}/{MAX_RETRIES}: re-scanning audio devices...")
+                    try:
+                        pa.terminate()
+                    except Exception:
+                        pass
+                    pa = pyaudio.PyAudio()
+                    for i in range(pa.get_device_count()):
+                        try:
+                            di = pa.get_device_info_by_index(i)
+                            if int(di.get('maxInputChannels', 0)) < 1:
+                                continue
+                            dev_name = di.get('name', '').lower()
+                            if 'stereo mix' in dev_name:
+                                continue
+                            stream = pa.open(
+                                rate=16000, channels=1, format=pyaudio.paInt16,
+                                input=True, input_device_index=i,
+                                frames_per_buffer=FRAMES_PER_BUFFER
+                            )
+                            native_rate = 16000
+                            native_channels = 1
+                            native_buffer = FRAMES_PER_BUFFER
+                            needs_resample = False
+                            target_name = di.get('name', 'unknown')
+                            target_idx = i
+                            _wlog(f"[WAKE] Retry {retry}: found device {i}: {target_name}")
+                            break
+                        except Exception:
+                            continue
+                    if stream is not None:
+                        break
+
+            if stream is None:
+                _wlog("[WAKE] FATAL: Cannot open any audio device after retries!")
+                _wlog("[WAKE] No microphone detected. Kree will enter degraded mode (text/UI still work).")
+                return
+            
+            self.selected_idx = target_idx
+            print(f"[WAKE DEBUG] Final runtime device index: {self.selected_idx}")
+            _wlog(f"[WAKE] Microphone stream opened (device={target_idx}, rate={native_rate}, channels={native_channels}, resample={needs_resample})")
+
+            # ── Save device fingerprint for cross-machine portability ──
+            try:
+                final_info = pa.get_device_info_by_index(int(target_idx))
+                final_name = final_info.get('name', '')
+                final_host_api_idx = final_info.get('hostApi')
+                final_host_api = None
+                if final_host_api_idx is not None:
+                    try:
+                        final_host_api = pa.get_host_api_info_by_index(int(final_host_api_idx)).get('name')
+                    except Exception:
+                        pass
+                save_audio_settings({
+                    "input_device_index": int(target_idx),
+                    "input_device_name": final_name,
+                    "input_device_host_api": final_host_api,
+                })
+                _wlog(f"[WAKE] Saved device fingerprint: name='{final_name}', host_api='{final_host_api}', idx={target_idx}")
+            except Exception as fp_err:
+                _wlog(f"[WAKE] Failed to save device fingerprint: {fp_err}")
+
+            _wlog(f"[WAKE] ✓ Mic acquired")
+            _wlog(f"[WAKE] Listening for wake word...")
         except Exception as e:
-            print(f"[KREE WAKE] Audio device error: {e}")
+            _wlog(f"[WAKE] FATAL: Audio device error: {e}")
+            _wlog(f"[WAKE] Traceback: {_tb.format_exc()}")
             return
 
+        # ── Streaming resampler (accumulates chunks for artifact-free resampling) ──
+        if needs_resample:
+            import scipy.signal
+            # Accumulate raw mono audio and resample in larger windows to avoid edge artifacts.
+            # resample_poly with up=160/down=441 needs ~4410 filter taps — much longer than
+            # a single 3528-sample chunk. Processing chunks independently creates boundary
+            # artifacts that destroy the mel spectrogram.
+            _resample_raw_buf = np.array([], dtype=np.int16)
+            _resample_out_buf = np.array([], dtype=np.int16)
+            # Accumulate ~0.5s of raw audio before resampling (gives filter enough context)
+            _RESAMPLE_ACCUMULATE = int(native_rate * 0.5)  # ~22050 samples at 44100Hz
+            _wlog(f"[WAKE] Streaming resampler: accumulate {_RESAMPLE_ACCUMULATE} samples before resampling")
+            
+            def _feed_and_get_chunks(raw_mono_chunk):
+                """Feed raw mono audio at native rate, return list of 1280-sample chunks at 16kHz."""
+                nonlocal _resample_raw_buf, _resample_out_buf
+                
+                _resample_raw_buf = np.concatenate([_resample_raw_buf, raw_mono_chunk])
+                
+                chunks_out = []
+                # When we have enough accumulated, resample the whole batch
+                while len(_resample_raw_buf) >= _RESAMPLE_ACCUMULATE:
+                    to_resample = _resample_raw_buf[:_RESAMPLE_ACCUMULATE]
+                    _resample_raw_buf = _resample_raw_buf[_RESAMPLE_ACCUMULATE:]
+                    
+                    resampled = scipy.signal.resample_poly(
+                        to_resample.astype(np.float32), 16000, native_rate
+                    ).astype(np.int16)
+                    _resample_out_buf = np.concatenate([_resample_out_buf, resampled])
+                
+                # Slice out complete 1280-sample frames
+                while len(_resample_out_buf) >= FRAMES_PER_BUFFER:
+                    chunks_out.append(_resample_out_buf[:FRAMES_PER_BUFFER].copy())
+                    _resample_out_buf = _resample_out_buf[FRAMES_PER_BUFFER:]
+                
+                return chunks_out
+
+        _wlog("[WAKE] Listening for wake word...")
         print("[KREE WAKE] Listening for wake word...")
 
         consecutive_hits = 0
@@ -315,79 +738,183 @@ class WakeWordDetector:
         
         frame_count = 0
 
-        while self.is_running:
+        self.is_ready = True
+        self.mic_ready.set()  # Signal boot: mic is confirmed open and listening
+        _wlog("[WAKE] ✓ Listening armed")
+        while self.is_running and threading.current_thread() == self._thread:
             try:
-                # ── CPU Yield Optimization ──
-                audio = stream.read(FRAMES_PER_BUFFER, exception_on_overflow=False)
-                audio_np = np.frombuffer(audio, dtype=np.int16)
+                # ── Wakeword conflict mitigation ──
+                # We must STOP the stream to release the mic so Kree's STT engine can use it
+                try:
+                    callback_self = getattr(self.on_wake, "__self__", None)
+                    if callback_self and hasattr(callback_self, "wake_event") and callback_self.wake_event.is_set():
+                        stream.stop_stream()
+                        print("[KREE WAKE] Kree is awake. Pausing wakeword detector stream to release mic.")
+                        while callback_self.wake_event.is_set() and self.is_running:
+                            time.sleep(0.5)
+                        if self.is_running:
+                            print("[KREE WAKE] Kree went to sleep. Resuming wakeword detector stream.")
+                            stream.start_stream()
+                except Exception as ex:
+                    print(f"[KREE WAKE] Conflict check error: {ex}")
+
+                # ── Read audio at native rate ──
+                audio = stream.read(native_buffer, exception_on_overflow=False)
+                audio_raw = np.frombuffer(audio, dtype=np.int16)
                 
-                # Keep rolling buffer for voice verification
-                verification_buffer.append(audio_np.copy())
-                if len(verification_buffer) > VERIFICATION_FRAMES:
-                    verification_buffer.pop(0)
-                    
-                frame_count += 1
+                # DIAGNOSTIC: Log raw and normalized levels to trace transformation chain
+                if frame_count % 50 == 0 and len(audio_raw) > 0:
+                    raw_rms = np.sqrt(np.mean(audio_raw.astype(np.float32)**2))
+                    raw_peak = np.max(np.abs(audio_raw))
+                    float_audio = audio_raw.astype(np.float32)
+                    norm_audio = float_audio / 32768.0
+                    norm_rms = np.sqrt(np.mean(norm_audio**2))
+                    norm_peak = np.max(np.abs(norm_audio))
+                    _wlog(f"[WAKE DIAG CHAIN] RAW: RMS={raw_rms:.2f} Peak={raw_peak} | NORM: RMS={norm_rms:.6f} Peak={norm_peak:.6f}")
+                
+                # Downmix to mono if multiple channels
+                if native_channels > 1:
+                    audio_raw = audio_raw.reshape(-1, native_channels).mean(axis=1).astype(np.int16)
 
-                # ── Auto Gain Control (Far-Field Boost) ──
-                # If the user is across the room, the volume is extremely low.
-                # We dynamically amplify quiet signals to match expected amplitude profiles.
-                max_amp = np.max(np.abs(audio_np))
-                if 10 < max_amp < 10000:
-                    gain = min(6.0, 10000.0 / max_amp)
-                    audio_predict = (audio_np.astype(np.float32) * gain).astype(np.int16)
+                # ── Resample to 16kHz or use directly ──
+                if needs_resample:
+                    # Streaming resampler: feed raw audio and get back 1280-sample chunks
+                    chunks_16k = _feed_and_get_chunks(audio_raw)
+                    if not chunks_16k:
+                        continue  # Still accumulating, no output yet
                 else:
+                    chunks_16k = [audio_raw]
+                
+                # Process each 1280-sample chunk through the model
+                for audio_np in chunks_16k:
+                    # Keep rolling buffer for voice verification
+                    verification_buffer.append(audio_np.copy())
+                    if len(verification_buffer) > VERIFICATION_FRAMES:
+                        verification_buffer.pop(0)
+                        
+                    frame_count += 1
+                    self._last_heartbeat = time.time()
+
                     audio_predict = audio_np.copy()
+                    
+                    # Ambient noise measurement
+                    self._measure_ambient(audio_predict)
 
-                # Ambient noise measurement
-                self._measure_ambient(audio_np)
+                    # Predict using the raw 16kHz audio
+                    prediction = self.model.predict(audio_predict)
 
-                # Predict using the AGC-boosted audio
-                prediction = self.model.predict(audio_predict)
+                    # DIAGNOSTIC: Log audio levels and model score periodically
+                    max_score = max(prediction.values()) if prediction else 0.0
+                    diag_peak = int(np.max(np.abs(audio_predict)))
+                    diag_rms = int(np.sqrt(np.mean(audio_predict.astype(np.float64) ** 2)))
+                    
+                    # Log every 50 frames (~4s) OR whenever score exceeds 0.01
+                    if frame_count % 50 == 0 or max_score > 0.01:
+                        _wlog(f"[WAKE DIAG] frame={frame_count} RMS={diag_rms} Peak={diag_peak} score={max_score:.6f} threshold={THRESHOLD}")
 
-                # Check for hits with consecutive-frame smoothing
-                hit = False
-                for model_name, score in prediction.items():
-                    if score > THRESHOLD:
-                        consecutive_hits += 1
-                        if consecutive_hits >= ACTIVATION_COUNT:
-                            hit = True
-                            consecutive_hits = 0
-                        break
-                else:
-                    consecutive_hits = 0  # Reset if no model scores above threshold
+                    if max_score >= self.threshold:
+                        pass
 
-                if not hit:
-                    continue
+                    # Skip the first ~1.5s of audio to ignore hardware pop/click spikes on init
+                    if frame_count < 20:
+                        continue
 
-                # ── Smart Cooldown ────────────────────────────────────────
-                now = time.time()
-                if now - self._last_wake_time < MIN_WAKE_INTERVAL_SEC:
-                    self.model.reset()
-                    continue
+                    # Check for hits with consecutive-frame smoothing
+                    hit = False
+                    for model_name, score in prediction.items():
+                        if score >= self.threshold:
+                            print(f"[WAKE TRIGGER] score={score} threshold={self.threshold}")
+                            consecutive_hits += 1
+                            if consecutive_hits >= ACTIVATION_COUNT:
+                                hit = True
+                                consecutive_hits = 0
+                            break
+                    else:
+                        consecutive_hits = 0  # Reset if no model scores above threshold
 
-                # ── Voice Fingerprint Verification ────────────────────────
-                if self._voice_fp.is_enrolled and verification_buffer:
-                    voice_audio = np.concatenate(verification_buffer)
-                    if not self._voice_fp.verify(voice_audio):
+                    if not hit:
+                        continue
+
+                    # ── Smart Cooldown ────────────────────────────────────────
+                    now = time.time()
+                    if now - self._last_wake_time < MIN_WAKE_INTERVAL_SEC:
                         self.model.reset()
-                        continue  # Wrong speaker, stay asleep
+                        continue
 
-                # ── Whisper Detection ─────────────────────────────────────
-                is_whisper = self._detect_whisper(audio_np)
+                    # ── Voice Fingerprint Verification ────────────────────────
+                    if self._voice_fp.is_enrolled and verification_buffer:
+                        voice_audio = np.concatenate(verification_buffer)
+                        if not self._voice_fp.verify(voice_audio):
+                            self.model.reset()
+                            continue  # Wrong speaker, stay asleep
 
-                self._last_wake_time = now
-                self.model.reset()  # Clear internal state to prevent double-trigger
-                print(f"[KREE WAKE] Triggered! whisper={is_whisper}, ambient_rms={self._ambient_rms}")
+                    # ── Whisper Detection ─────────────────────────────────────
+                    is_whisper = self._detect_whisper(audio_np)
 
-                # Fire callback — always full wake for now (single keyword)
-                self.on_wake(WAKE_FULL, is_whisper)
+                    self._last_wake_time = now
+                    self.model.reset()  # Clear internal state to prevent double-trigger
+                    print(f"[KREE WAKE] Triggered! whisper={is_whisper}, ambient_rms={self._ambient_rms}")
+
+                    # Fire callback asynchronously so it doesn't block the audio thread
+                    try:
+                        print("[WAKE TRIGGER] dispatching callback asynchronously...")
+                        threading.Thread(target=self.callback, args=(WAKE_FULL, is_whisper), daemon=True).start()
+                    except Exception as e:
+                        print(f"[WAKE ERROR] failed to dispatch callback: {e}")
 
             except Exception as e:
-                if self.is_running:
-                    print(f"[KREE WAKE] Loop error: {e}")
+                err_code = getattr(e, 'errno', None) or (e.args[0] if e.args else None)
+                is_stream_death = err_code in (-9999, -9988) or 'Stream closed' in str(e) or 'Unanticipated host error' in str(e)
+
+                if is_stream_death and self.is_running:
+                    _wlog(f"[WAKE] Stream died (error {err_code}): {e}. Attempting recovery...")
+                    # ── Automatic stream recovery (max 3 retries) ──
+                    recovered = False
+                    for attempt in range(1, 4):
+                        _wlog(f"[WAKE] Recovery attempt {attempt}/3...")
+                        try:
+                            try:
+                                stream.stop_stream()
+                            except Exception:
+                                pass
+                            try:
+                                stream.close()
+                            except Exception:
+                                pass
+                            try:
+                                pa.terminate()
+                            except Exception:
+                                pass
+                            time.sleep(2.0 * attempt)  # Exponential backoff: 2s, 4s, 6s
+                            pa = pyaudio.PyAudio()
+                            stream = pa.open(**stream_kwargs)
+                            _wlog(f"[WAKE] Recovery attempt {attempt} succeeded. Stream reopened.")
+                            recovered = True
+                            break
+                        except Exception as re_err:
+                            _wlog(f"[WAKE] Recovery attempt {attempt} failed: {re_err}")
+                    if not recovered:
+                        _wlog("[WAKE] All 3 recovery attempts failed. Exiting thread (watchdog will restart).")
+                        try:
+                            pa.terminate()
+                        except Exception:
+                            pass
+                        return
+                elif self.is_running:
+                    import traceback
+                    print(f"[KREE WAKE] Loop error: {e}\n{traceback.format_exc()}")
                     time.sleep(0.1)
 
-        stream.stop_stream()
-        stream.close()
-        pa.terminate()
+        try:
+            stream.stop_stream()
+        except Exception:
+            pass
+        try:
+            stream.close()
+        except Exception:
+            pass
+        try:
+            pa.terminate()
+        except Exception:
+            pass
         print("[KREE WAKE] Detector stopped.")

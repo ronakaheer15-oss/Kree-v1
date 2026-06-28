@@ -12,14 +12,13 @@ from kree.agent.planner       import create_plan, replan
 from kree.agent.error_handler import analyze_error, generate_fix, ErrorDecision
 
 
-from kree._paths import PROJECT_ROOT
-BASE_DIR = PROJECT_ROOT
-API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
+from kree.core.runtime import CONFIG_DIR
+API_CONFIG_PATH = CONFIG_DIR / "api_keys.json"
 
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    from kree.core import vault
+    return vault.load_api_key(API_CONFIG_PATH)
 
 def _run_generated_code(description: str, speak: Callable | None = None) -> str:
     import google.generativeai as genai
@@ -42,8 +41,9 @@ def _run_generated_code(description: str, speak: Callable | None = None) -> str:
             pass
 
     genai.configure(api_key=_get_api_key())
+    from kree.core.version import MODEL_FLASH
     model = genai.GenerativeModel(
-        model_name="gemini-2.5-flash",
+        model_name=MODEL_FLASH,
         system_instruction=(
             "You are an expert Python developer. "
             "Write clean, complete, working Python code. "
@@ -125,7 +125,8 @@ def _inject_context(params: dict, tool: str, step_results: dict, goal: str = "")
 def _detect_language(text: str) -> str:
     import google.generativeai as genai
     genai.configure(api_key=_get_api_key())
-    model = genai.GenerativeModel("gemini-2.5-flash-lite")
+    from kree.core.version import MODEL_FLASH_LITE
+    model = genai.GenerativeModel(MODEL_FLASH_LITE)
     try:
         response = model.generate_content(
             f"What language is this text written in? "
@@ -143,7 +144,8 @@ def _translate_to_goal_language(content: str, goal: str) -> str:
     try:
         import google.generativeai as genai
         genai.configure(api_key=_get_api_key())
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        from kree.core.version import MODEL_FLASH
+        model = genai.GenerativeModel(MODEL_FLASH)
 
         target_lang = _detect_language(goal)
         print(f"[Executor] 🌐 Translating to: {target_lang}")
@@ -377,7 +379,8 @@ class AgentExecutor:
         try:
             import google.generativeai as genai
             genai.configure(api_key=_get_api_key())
-            model     = genai.GenerativeModel(model_name="gemini-2.5-flash-lite")
+            from kree.core.version import MODEL_FLASH_LITE
+            model     = genai.GenerativeModel(model_name=MODEL_FLASH_LITE)
             steps_str = "\n".join(f"- {s.get('description', '')}" for s in completed_steps)
             prompt    = (
                 f'User goal: "{goal}"\n'

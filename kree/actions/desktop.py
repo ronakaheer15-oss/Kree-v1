@@ -19,17 +19,30 @@ from pathlib import Path
 from datetime import datetime
 
 
-from kree._paths import PROJECT_ROOT
-BASE_DIR = PROJECT_ROOT
-API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
+from kree.core.runtime import CONFIG_DIR
+API_CONFIG_PATH = CONFIG_DIR / "api_keys.json"
 
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    from kree.core import vault
+    return vault.load_api_key(API_CONFIG_PATH)
 
 
 def _get_desktop() -> Path:
+    import os
+    import platform
+    if platform.system() == "Windows":
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders") as key:
+                value, _ = winreg.QueryValueEx(key, "Desktop")
+                expanded = os.path.expandvars(str(value))
+                return Path(expanded)
+        except Exception:
+            pass
+        onedrive_desktop = Path.home() / "OneDrive" / "Desktop"
+        if onedrive_desktop.exists():
+            return onedrive_desktop
     return Path.home() / "Desktop"
 
 
@@ -52,6 +65,11 @@ def _is_safe_code(code: str) -> tuple[bool, str]:
         return False, f"Invalid Python: {exc}"
 
     code_lower = code.lower()
+    
+    # Absolute strict block for any exec or eval calls
+    if "exec" in code_lower or "eval" in code_lower:
+        return False, "Blocked operation: Use of exec/eval is strictly forbidden."
+
     for keyword in BLOCKED_KEYWORDS:
         if keyword.lower() in code_lower:
             return False, f"Blocked operation: '{keyword}'"
@@ -64,9 +82,10 @@ def _ask_gemini_for_desktop_action(task: str) -> str:
     to accomplish a desktop-related task.
     """
     import google.generativeai as genai
+    from kree.core.version import MODEL_FLASH
 
     genai.configure(api_key=_get_api_key())
-    model = genai.GenerativeModel("gemini-2.5-flash")
+    model = genai.GenerativeModel(MODEL_FLASH)
 
     desktop = str(_get_desktop())
 
@@ -277,70 +296,165 @@ FILE_TYPE_MAP = {
 
 def organize_desktop(mode: str = "by_type") -> str:
     """
-    Organizes desktop files.
-    mode: 'by_type' — groups by file type (Images, Documents, etc.)
+    Organizes desktop files and directories, scanning both personal and public directories.
+    mode: 'by_type' — groups by file type (Images, Documents, Apps, Folders, etc.)
           'by_date'  — groups by month (2024-01, 2024-02, etc.)
     """
+    import sys
+    import os
     desktop = _get_desktop()
+    print(f"[Desktop] Organizing items at: {desktop}")
     moved   = []
     skipped = []
 
-    for item in desktop.iterdir():
-        if item.is_dir() or item.name.startswith("."):
-            continue
+    # Protected system directories and organization folders
+    protected = {
+        "apps", "folders", "images", "documents", "music", "archives", "code", "executables", "others", "others/"
+    }
 
-        if item.suffix.lower() == ".lnk":
-            continue
+    # Gather directories to organize
+    targets = [desktop]
+    if sys.platform == "win32":
+        public_desktop = Path(os.environ.get("PUBLIC", "C:\\Users\\Public")) / "Desktop"
+        if public_desktop.exists() and public_desktop != desktop:
+            targets.append(public_desktop)
 
-        if mode == "by_date":
-            mtime      = datetime.fromtimestamp(item.stat().st_mtime)
-            folder_name = mtime.strftime("%Y-%m")
-        else:
-            ext        = item.suffix.lower()
-            folder_name = "Others"
-            for folder, exts in FILE_TYPE_MAP.items():
-                if ext in exts:
-                    folder_name = folder
-                    break
+    for target_dir in targets:
+        for item in target_dir.iterdir():
+            name_lower = item.name.lower()
+            if name_lower.startswith(".") or name_lower == "desktop.ini" or name_lower in protected or name_lower.startswith("desktop archive"):
+                continue
 
-        target_dir = desktop / folder_name
-        target_dir.mkdir(exist_ok=True)
-        new_path = target_dir / item.name
+            folder_name = None
 
-        if new_path.exists():
-            skipped.append(item.name)
-            continue
+            if item.is_dir():
+                # It's a directory: move it to the "Folders" folder
+                folder_name = "Folders"
+            else:
+                ext = item.suffix.lower()
+                # If it's a shortcut or executable, move to "Apps" folder
+                if ext in (".lnk", ".url", ".exe", ".msi", ".bat", ".cmd", ".sh"):
+                    folder_name = "Apps"
+                elif mode == "by_date":
+                    mtime = datetime.fromtimestamp(item.stat().st_mtime)
+                    folder_name = mtime.strftime("%Y-%m")
+                else:
+                    folder_name = "Others"
+                    for folder, exts in FILE_TYPE_MAP.items():
+                        if ext in exts:
+                            folder_name = folder
+                            break
 
-        shutil.move(str(item), str(new_path))
-        moved.append(f"{item.name} → {folder_name}/")
+            if not folder_name:
+                continue
 
-    result = f"Desktop organized ({mode}). {len(moved)} files moved."
+            # We always move the items to the USER's personal desktop folders to ensure they don't mix/pollute public spaces
+            dest_dir = desktop / folder_name
+            dest_dir.mkdir(exist_ok=True)
+            new_path = dest_dir / item.name
+
+            if new_path.exists():
+                skipped.append(item.name)
+                continue
+
+            try:
+                # Try moving
+                shutil.move(str(item), str(new_path))
+                moved.append(f"{item.name} → {folder_name}/")
+            except PermissionError:
+                # If we can't move from Public desktop due to permission, try copying it and then deleting it.
+                # If deletion fails, we delete the copied file to avoid duplicates, and skip.
+                try:
+                    if item.is_dir():
+                        shutil.copytree(str(item), str(new_path))
+                        try:
+                            shutil.rmtree(str(item))
+                            moved.append(f"{item.name} → {folder_name}/")
+                        except Exception:
+                            shutil.rmtree(str(new_path)) # clean up copy
+                            skipped.append(f"{item.name} (Permission Denied)")
+                    else:
+                        shutil.copy2(str(item), str(new_path))
+                        try:
+                            os.remove(str(item))
+                            moved.append(f"{item.name} → {folder_name}/")
+                        except Exception:
+                            os.remove(str(new_path)) # clean up copy
+                            skipped.append(f"{item.name} (Permission Denied)")
+                except Exception as e:
+                    skipped.append(f"{item.name} ({e})")
+            except Exception as e:
+                skipped.append(f"{item.name} ({e})")
+
+    result = f"Desktop organized ({mode}). {len(moved)} items moved."
     if moved:
         preview = moved[:8]
         result += "\n" + "\n".join(preview)
         if len(moved) > 8:
             result += f"\n... and {len(moved)-8} more."
     if skipped:
-        result += f"\n{len(skipped)} files skipped (name conflict)."
+        result += f"\nSkipped {len(skipped)} items (already exist or in use)."
+    
+    print(f"[Desktop] Organize result: {result}")
     return result
 
 
 def list_desktop() -> str:
-    """Lists everything on the desktop."""
+    """Lists everything on the desktop, scanning both personal and public directories."""
+    import os
+    import sys
+    import platform
     desktop = _get_desktop()
-    items   = []
-
-    for item in sorted(desktop.iterdir()):
-        if item.name.startswith("."):
-            continue
-        if item.is_dir():
-            count = len(list(item.iterdir()))
-            items.append(f"📁 {item.name}/ ({count} items)")
+    print(f"[Desktop] Detecting desktop items at: {desktop}")
+    
+    # Open the desktop folder in Explorer
+    try:
+        if platform.system() == "Windows":
+            os.startfile(str(desktop))
+        elif platform.system() == "Darwin":
+            subprocess.Popen(["open", str(desktop)])
         else:
-            size = item.stat().st_size
-            size_str = f"{size/1024:.1f} KB" if size < 1024*1024 else f"{size/1024/1024:.1f} MB"
-            items.append(f"📄 {item.name} ({size_str})")
+            subprocess.Popen(["xdg-open", str(desktop)])
+    except Exception as e:
+        print(f"[Desktop] Could not open folder: {e}")
 
+    items = []
+    seen = set()
+
+    def scan_dir(d_path):
+        if not d_path.exists():
+            return
+        for item in d_path.iterdir():
+            name_lower = item.name.lower()
+            if name_lower.startswith(".") or name_lower == "desktop.ini":
+                continue
+            if name_lower in seen:
+                continue
+            seen.add(name_lower)
+            if item.is_dir():
+                try:
+                    count = len(list(item.iterdir()))
+                except Exception:
+                    count = 0
+                items.append(f"📁 {item.name}/ ({count} items)")
+            else:
+                try:
+                    size = item.stat().st_size
+                    size_str = f"{size/1024:.1f} KB" if size < 1024*1024 else f"{size/1024/1024:.1f} MB"
+                    items.append(f"📄 {item.name} ({size_str})")
+                except Exception:
+                    items.append(f"📄 {item.name}")
+
+    scan_dir(desktop)
+    
+    # Scan public desktop on Windows
+    if sys.platform == "win32":
+        public_desktop = Path(os.environ.get("PUBLIC", "C:\\Users\\Public")) / "Desktop"
+        if public_desktop.exists() and public_desktop != desktop:
+            scan_dir(public_desktop)
+
+    items.sort()
+    print(f"[Desktop] Detected {len(items)} items: {items}")
     if not items:
         return "Desktop is empty."
     return f"Desktop ({len(items)} items):\n" + "\n".join(items)

@@ -1,36 +1,45 @@
 """
 Kree AI — Auto-Update Engine
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Checks GitHub Releases API on startup for newer versions.
-If found, announces via TTS, downloads installer, and runs it silently.
-
-Flow:
-  boot → background check (1s) → if new version:
-    → Kree announces "Update available"
-    → User confirms
-    → Download in background → silent install → restart
+Unifies and routes all update check requests to update_service.py.
+Provides backwards-compatible wrappers.
 """
 
 import os
 import json
 import threading
+from pathlib import Path
+from kree.core.runtime import CONFIG_DIR
 
 # ── Resolve paths ─────────────────────────────────────────────────────────────
-from kree._paths import PROJECT_ROOT
-BASE_DIR = PROJECT_ROOT
-SERVICE_KEYS_PATH = BASE_DIR / "config" / "service_keys.json"
+SERVICE_KEYS_PATH = CONFIG_DIR / "service_keys.json"
 
 
 def _load_service_keys() -> dict:
     try:
-        with open(SERVICE_KEYS_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
+        from kree.core.vault import decrypt_data, encrypt_data
+        if not SERVICE_KEYS_PATH.exists():
+            return {}
+            
+        raw = SERVICE_KEYS_PATH.read_bytes()
+        if raw.startswith(b'{'):
+            data = json.loads(raw.decode('utf-8'))
+            try:
+                encrypted = encrypt_data(raw.decode('utf-8'))
+                SERVICE_KEYS_PATH.write_bytes(encrypted)
+            except Exception:
+                pass
+            return data
+            
+        decrypted = decrypt_data(raw)
+        return json.loads(decrypted)
     except Exception:
         return {}
 
 
 def get_current_version() -> str:
-    return _load_service_keys().get("kree_version", "1.0.0")
+    from kree.core.version import APP_VERSION
+    return _load_service_keys().get("kree_version", APP_VERSION)
 
 
 def get_github_repo() -> str:
@@ -39,87 +48,47 @@ def get_github_repo() -> str:
 
 def check_for_update() -> dict:
     """
-    Checks GitHub Releases API for the latest release.
+    Checks for the latest updates.
     Returns dict with 'available', 'version', 'download_url', 'notes'.
     Non-blocking safe — never raises.
     """
     try:
-        import urllib.request
-        import urllib.error
-
-        repo = get_github_repo()
-        if not repo or repo == "YOUR_USERNAME/kree":
-            return {"available": False, "reason": "repo_not_configured"}
-
-        url = f"https://api.github.com/repos/{repo}/releases/latest"
-        req = urllib.request.Request(url, headers={"User-Agent": f"KreeAI/{get_current_version()}"})
+        from kree.core.update_service import check_for_updates
+        res = check_for_updates()
         
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        # Keep backward compatibility with old keys
+        available = res.get("update_available", False)
+        version = res.get("latest_version", "")
+        download_url = res.get("download_url", "")
+        notes = res.get("notes", "")
 
-        latest_version = data.get("tag_name", "").lstrip("v")
-        current = get_current_version()
-
-        if not latest_version:
-            return {"available": False}
-
-        # Simple semver comparison
-        if _version_gt(latest_version, current):
-            # Find .exe asset
-            download_url = ""
-            for asset in data.get("assets", []):
-                if asset["name"].lower().endswith(".exe"):
-                    download_url = asset["browser_download_url"]
-                    break
-
-            return {
-                "available": True,
-                "version": latest_version,
-                "download_url": download_url,
-                "notes": data.get("body", ""),
-            }
-
-        return {"available": False}
-
+        return {
+            "available": available,
+            "version": version,
+            "download_url": download_url,
+            "notes": notes,
+        }
     except Exception as e:
         print(f"[KREE UPDATE] Check failed (non-fatal): {e}")
         return {"available": False, "error": str(e)}
 
 
-def _version_gt(a: str, b: str) -> bool:
-    """True if version a > version b (semver-ish)."""
-    try:
-        def parts(v):
-            return [int(x) for x in v.split(".")]
-        return parts(a) > parts(b)
-    except Exception:
-        return a > b
-
-
 def download_only(download_url: str) -> str:
     """
-    Downloads the installer to %TEMP% without running it.
-    Returns the absolute path to the downloaded installer.
+    Downloads the update package in background.
+    Returns the absolute path to the downloaded package.
     """
     if not download_url:
         return ""
 
     try:
-        import urllib.request
-        installer_path = os.path.join(os.environ.get("TEMP", "."), "kree_update.exe")
-        
-        # Cleanup old download if exists
-        if os.path.exists(installer_path):
-            try: os.remove(installer_path)
-            except: pass
-
-        print(f"[KREE UPDATE] Background download starting: {download_url}")
-        urllib.request.urlretrieve(download_url, installer_path)
-        print(f"[KREE UPDATE] Background download complete: {installer_path}")
-        
-        _pending_update["downloaded_path"] = installer_path
-        _pending_update["is_ready"] = True
-        return installer_path
+        from kree.core.update_service import download_update
+        res = download_update()
+        path = res.get("download_path", "")
+        if path:
+            _pending_update["downloaded_path"] = path
+            _pending_update["is_ready"] = True
+        return path
     except Exception as e:
         print(f"[KREE UPDATE] Background download failed: {e}")
         return ""
@@ -173,7 +142,8 @@ def check_update_background(ui=None, speak_fn=None, auto_download=True):
 
         if ui:
             ui.write_log(f"Kree: New version v{version} detected.")
-            ui._eval(f"try{{ showToast('Kree v{version} update detected...', '#3b82f6'); }}catch(e){{}}")
+            safe_version = json.dumps(version)
+            ui._eval(f"try{{ showToast('Kree v' + {safe_version} + ' update detected...', '#3b82f6'); }}catch(e){{}}")
 
         if auto_download and url:
             if ui:
@@ -186,7 +156,7 @@ def check_update_background(ui=None, speak_fn=None, auto_download=True):
                 _pending_update["is_ready"] = True
                 if ui:
                     ui.write_log(f"Kree: v{version} is ready to install.")
-                    ui._eval(f"try{{ showToast('Kree v{version} is ready. It will be applied on restart.', '#00dc82'); }}catch(e){{}}")
+                    ui._eval(f"try{{ showToast('Kree v' + {safe_version} + ' is ready. It will be applied on restart.', '#00dc82'); }}catch(e){{}}")
                     if speak_fn:
                         speak_fn(f"Update version {version} has been downloaded and is ready to apply on restart.")
 

@@ -4,7 +4,7 @@ import sys
 
 def _find_project_root() -> Path:
     if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent
+        return Path(sys._MEIPASS)
     # This file lives at <project_root>/kree/_paths.py
     return Path(__file__).resolve().parent.parent
 

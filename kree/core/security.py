@@ -20,10 +20,10 @@ def is_command_destructive(command: str) -> bool:
     """Returns True if the command matches a high-risk destructive pattern."""
     return bool(_DESTRUCTIVE_RE.search(command))
 
-def is_path_safe(path: str | Path, allow_read_only: bool = True) -> bool:
+def is_path_safe(path: str | Path) -> bool:
     """
     Verifies if a file path is within the allowed Kree_Workspace sandbox.
-    If allow_read_only is True, allows reading from anywhere but writing only to sandbox.
+    Enforces STRICT boundaries for both read and write operations.
     """
     try:
         p = Path(path).resolve()
@@ -34,7 +34,7 @@ def is_path_safe(path: str | Path, allow_read_only: bool = True) -> bool:
             workspace.mkdir(parents=True, exist_ok=True)
             
         # Is the path inside the workspace?
-        is_inside = str(p).startswith(str(workspace))
+        is_inside = p.is_relative_to(workspace)
         
         # For Government-Grade security, we start by enforcing STRICT write access
         return is_inside

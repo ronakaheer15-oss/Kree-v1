@@ -307,8 +307,8 @@ def get_disk_usage(path: str = "home") -> str:
 
 def organize_desktop() -> str:
     """
-    Organizes the desktop by grouping files into folders by type.
-    Creates folders: Images, Documents, Videos, Music, Archives, Others
+    Organizes the desktop by grouping files and folders into directories by type.
+    Creates folders: Images, Documents, Videos, Music, Archives, Code, Apps, Folders, Others
     """
     try:
         desktop = _get_desktop()
@@ -319,26 +319,31 @@ def organize_desktop() -> str:
             "Music":     [".mp3", ".wav", ".flac", ".aac", ".ogg", ".wma"],
             "Archives":  [".zip", ".rar", ".7z", ".tar", ".gz"],
             "Code":      [".py", ".js", ".html", ".css", ".json", ".xml", ".ts", ".cpp", ".java"],
+            "Apps":      [".lnk", ".url", ".exe", ".msi"],
         }
 
         moved    = []
         skipped  = []
+        exclude_dirs = {"images", "documents", "videos", "music", "archives", "code", "apps", "folders", "others"}
 
         for item in desktop.iterdir():
-
-            if item.is_dir() or item.name.startswith("."):
+            if item.name.startswith("."):
                 continue
 
-            ext        = item.suffix.lower()
             target_dir = None
 
-            for folder, extensions in type_map.items():
-                if ext in extensions:
-                    target_dir = desktop / folder
-                    break
-
-            if target_dir is None:
-                target_dir = desktop / "Others"
+            if item.is_dir():
+                if item.name.lower() in exclude_dirs:
+                    continue
+                target_dir = desktop / "Folders"
+            else:
+                ext = item.suffix.lower()
+                for folder, extensions in type_map.items():
+                    if ext in extensions:
+                        target_dir = desktop / folder
+                        break
+                if target_dir is None:
+                    target_dir = desktop / "Others"
 
             target_dir.mkdir(exist_ok=True)
             new_path = target_dir / item.name
@@ -350,13 +355,13 @@ def organize_desktop() -> str:
             shutil.move(str(item), str(new_path))
             moved.append(f"{item.name} → {target_dir.name}/")
 
-        result = f"Desktop organized. {len(moved)} files moved."
+        result = f"Desktop organized. {len(moved)} items moved."
         if moved:
             result += "\n" + "\n".join(moved[:10])
             if len(moved) > 10:
                 result += f"\n... and {len(moved)-10} more."
         if skipped:
-            result += f"\n{len(skipped)} files skipped (already exist)."
+            result += f"\n{len(skipped)} items skipped (already exist)."
 
         return result
 

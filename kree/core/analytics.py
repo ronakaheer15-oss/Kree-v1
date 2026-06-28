@@ -15,12 +15,10 @@ import uuid
 import platform
 import threading
 
-# ── Resolve paths ─────────────────────────────────────────────────────────────
-from kree._paths import PROJECT_ROOT
-BASE_DIR = PROJECT_ROOT
-SERVICE_KEYS_PATH = BASE_DIR / "config" / "service_keys.json"
-USER_ID_PATH = BASE_DIR / "config" / "user_id.txt"
-AUDIO_SETTINGS_PATH = BASE_DIR / "config" / "audio_settings.json"
+from kree.core.runtime import CONFIG_DIR
+SERVICE_KEYS_PATH = CONFIG_DIR / "service_keys.json"
+USER_ID_PATH = CONFIG_DIR / "user_id.txt"
+AUDIO_SETTINGS_PATH = CONFIG_DIR / "audio_settings.json"
 
 # ── Lazy PostHog client ───────────────────────────────────────────────────────
 _posthog_client = None

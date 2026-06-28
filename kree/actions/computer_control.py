@@ -40,24 +40,22 @@ except ImportError:
     _PYPERCLIP = False
 
 
-from kree._paths import PROJECT_ROOT
-BASE_DIR = PROJECT_ROOT
-API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
+from kree.core.runtime import CONFIG_DIR, MEMORY_DIR
+API_CONFIG_PATH = CONFIG_DIR / "api_keys.json"
 
 
 def _load_user_profile() -> dict:
     """Load user profile from long_term.json for form filling."""
-    memory_path = BASE_DIR / "memory" / "long_term.json"
     try:
-        if memory_path.exists():
-            data = json.loads(memory_path.read_text(encoding="utf-8"))
-            identity = data.get("identity", {})
-            return {
-                "name":  identity.get("name",  {}).get("value", ""),
-                "age":   identity.get("age",   {}).get("value", ""),
-                "city":  identity.get("city",  {}).get("value", ""),
-                "email": identity.get("email", {}).get("value", ""),
-            }
+        from kree.memory import memory_manager
+        data = memory_manager.load_memory()
+        identity = data.get("identity", {})
+        return {
+            "name":  identity.get("name",  {}).get("value", ""),
+            "age":   identity.get("age",   {}).get("value", ""),
+            "city":  identity.get("city",  {}).get("value", ""),
+            "email": identity.get("email", {}).get("value", ""),
+        }
     except Exception:
         pass
     return {}
@@ -338,7 +336,8 @@ def _analyze_screen_for_element(description: str) -> tuple[int, int] | None:
             api_key = json.load(f)["gemini_api_key"]
 
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.5-flash-lite")
+        from kree.core.version import MODEL_FLASH_LITE
+        model = genai.GenerativeModel(MODEL_FLASH_LITE)
 
 
         _ensure_pyautogui()

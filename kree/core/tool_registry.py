@@ -28,7 +28,7 @@ TOOL_DECLARATIONS = [
             "properties": {
                 "app_name": {
                     "type": "STRING",
-                    "description": "Exact name of the application (e.g. 'WhatsApp', 'Chrome', 'Spotify')"
+                    "description": "Name of the application. If the user specifies a specific account or profile (e.g. 'Work Chrome', 'Seller Chrome', 'Chrome with Sadhya account'), you MUST include those words in the app_name (e.g. 'Sadhya Chrome')."
                 }
             },
             "required": ["app_name"]
@@ -443,6 +443,14 @@ TOOL_DECLARATIONS = [
             "priority": {
                 "type": "STRING",
                 "description": "low | normal | high (default: normal)"
+            },
+            "tier": {
+                "type": "INTEGER",
+                "description": "Task difficulty tier: 1 (Quick Task), 2 (Code Helper), 3 (Developer)"
+            },
+            "timeout": {
+                "type": "INTEGER",
+                "description": "Override task execution timeout in seconds"
             }
         },
         "required": ["goal"]
@@ -540,6 +548,17 @@ TOOL_DECLARATIONS = [
             "time": {"type": "STRING", "description": "Meeting time or date"}
         },
         "required": ["action"]
+    }
+},
+{
+    "name": "safe_calculator",
+    "description": "Safely evaluates a mathematical expression using AST parsing. Supports +, -, *, /, %, **, unary minus, and parentheses.",
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {
+            "expression": {"type": "STRING", "description": "The mathematical expression to evaluate (e.g. '2 * (3 + 4)')"}
+        },
+        "required": ["expression"]
     }
 }
 ]

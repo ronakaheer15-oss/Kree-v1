@@ -1,15 +1,13 @@
 """
 Kree PWA Server — Auto-discovers your WiFi IP and serves the mobile companion.
 Starts automatically as a background thread when Kree launches.
-Supports auth token validation for secure connections.
+Now uses FastAPI and Uvicorn for unified HTTP/WebSocket serving.
 """
-import http.server
 import socket
-import os
-import sys
 import json
 import threading
 import secrets
+import uvicorn
 from kree.core.runtime import BUNDLE_DIR, CONFIG_DIR as RUNTIME_CONFIG_DIR
 
 BASE_DIR = BUNDLE_DIR
@@ -19,7 +17,6 @@ TOKEN_FILE = CONFIG_DIR / "pwa_token.json"
 
 DEFAULT_PORT = 8765
 TOKEN_TTL_SECONDS = 30 * 24 * 3600
-
 
 def get_local_ip():
     """Get the machine's WiFi/LAN IP address."""
@@ -32,7 +29,6 @@ def get_local_ip():
     except Exception:
         return "127.0.0.1"
 
-
 def get_pwa_port():
     """Read port from config or use default."""
     settings_file = CONFIG_DIR / "settings.json"
@@ -43,7 +39,6 @@ def get_pwa_port():
     except Exception:
         pass
     return DEFAULT_PORT
-
 
 def load_or_create_token():
     """Load existing auth token or generate a new one on first launch."""
@@ -61,9 +56,7 @@ def load_or_create_token():
     except Exception:
         pass
 
-    # Generate a new token with a 30-day expiration.
     return reset_token()
-
 
 def reset_token():
     """Generate a new token, invalidating all existing connected devices."""
@@ -79,40 +72,19 @@ def reset_token():
     return token
 
 def get_pwa_url():
-    """Get the full PWA URL without HTTP auth token injection."""
+    """Get the full PWA URL with authentication token."""
     ip = get_local_ip()
     port = get_pwa_port()
-    return f"http://{ip}:{port}"
+    token = load_or_create_token()
+    return f"http://{ip}:{port}?token={token}"
 
-
-class _SilentHandler(http.server.SimpleHTTPRequestHandler):
-    """Suppress noisy connection-reset errors from mobile browsers."""
-
-    def __init__(self, *args, directory=None, **kwargs):
-        super().__init__(*args, directory=str(PWA_DIR), **kwargs)
-
-    def handle(self):
-        try:
-            super().handle()
-        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, OSError):
-            pass
-
-    def log_message(self, format, *args):
-        # Only log successful requests, skip noise
-        if len(args) >= 2 and isinstance(args[1], str) and args[1].startswith('4'):
-            return
-        # Completely silent in background mode
-        pass
-
-
-_server_instance = None
 _server_thread = None
 _server_error = None
-
+_uvicorn_server = None
 
 def start_pwa_server_background():
-    """Start the PWA server as a background daemon thread. Returns (url, error)."""
-    global _server_instance, _server_thread, _server_error
+    """Start the unified FastAPI server as a background daemon thread. Returns (url, error)."""
+    global _server_thread, _server_error, _uvicorn_server
     _server_error = None
 
     if not PWA_DIR.exists():
@@ -124,13 +96,12 @@ def start_pwa_server_background():
     url = get_pwa_url()
 
     def _serve():
-        global _server_instance, _server_error
+        global _server_error, _uvicorn_server
         try:
-            _server_instance = http.server.ThreadingHTTPServer(
-                ("0.0.0.0", port), _SilentHandler
-            )
-            print(f"[KREE PWA] Serving on http://0.0.0.0:{port}")
-            _server_instance.serve_forever()
+            print(f"[KREE PWA] Serving on {url}")
+            config = uvicorn.Config("kree.fastapi_server:app", host="0.0.0.0", port=port, log_level="warning")
+            _uvicorn_server = uvicorn.Server(config)
+            _uvicorn_server.run()
         except OSError as e:
             _server_error = f"PWA server failed to start on port {port} — {e}"
             print(f"[KREE PWA] ERROR: {_server_error}")
@@ -138,12 +109,11 @@ def start_pwa_server_background():
             _server_error = f"PWA server error: {e}"
             print(f"[KREE PWA] ERROR: {_server_error}")
 
-    _server_thread = threading.Thread(target=_serve, daemon=True, name="kree-pwa-server")
+    _server_thread = threading.Thread(target=_serve, daemon=True, name="kree-fastapi-server")
     _server_thread.start()
 
-    # Give the server a moment to start or fail
     import time
-    time.sleep(0.3)
+    time.sleep(0.5)
 
     if _server_error:
         return None, _server_error
@@ -151,68 +121,18 @@ def start_pwa_server_background():
     print(f"[KREE PWA] Mobile companion ready: {url}")
     return url, None
 
-
 def stop_pwa_server():
-    """Stop the background PWA server."""
-    global _server_instance
-    if _server_instance:
-        try:
-            _server_instance.shutdown()
-            _server_instance.server_close()
-        except Exception:
-            pass
-        _server_instance = None
-
+    """Stop the background FastAPI server."""
+    global _uvicorn_server
+    if _uvicorn_server:
+        _uvicorn_server.should_exit = True
 
 def get_server_status():
     """Return current server status dict for the UI."""
     return {
-        "running": _server_instance is not None and _server_error is None,
-        "url": get_pwa_url() if _server_instance else None,
+        "running": _uvicorn_server is not None and _server_error is None,
+        "url": get_pwa_url(),
         "port": get_pwa_port(),
         "error": _server_error,
         "local_ip": get_local_ip(),
     }
-
-
-# Allow standalone execution for testing
-if __name__ == "__main__":
-    port = get_pwa_port()
-    url = get_pwa_url()
-
-    print()
-    print("=" * 52)
-    print("   KREE MOBILE COMPANION — PWA SERVER ACTIVE")
-    print("=" * 52)
-    print()
-    print(f"   Your URL:  {url}")
-    print()
-    print("   HOW TO CONNECT YOUR PHONE:")
-    print("   ─────────────────────────────────────────")
-    print("   1. On your phone, open the browser")
-    print("   2. Type this URL or scan the QR code in Kree")
-    print("   3. Tap Share → 'Add to Home Screen'")
-    print("   4. Open the Kree app from your home screen!")
-    print()
-    print("   Make sure your phone is on the SAME WiFi!")
-    print("=" * 52)
-    print()
-
-    if not PWA_DIR.exists():
-        print(f"[ERROR] pwa/ folder not found at {PWA_DIR}")
-        sys.exit(1)
-
-    os.chdir(str(PWA_DIR))
-    handler = _SilentHandler
-    try:
-        server = http.server.ThreadingHTTPServer(("0.0.0.0", port), handler)
-    except AttributeError:
-        server = http.server.HTTPServer(("0.0.0.0", port), handler)
-
-    print(f"[KREE] Serving PWA on http://0.0.0.0:{port} ...")
-    print("[KREE] Press Ctrl+C to stop.\n")
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\n[KREE] Server stopped.")
-        server.server_close()
