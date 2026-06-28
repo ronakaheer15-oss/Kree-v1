@@ -1,8 +1,8 @@
 """Single source of truth for the Kree application version."""
 
 APP_NAME = "Kree AI"
-APP_VERSION = "0.9.0-beta.1"
-BUILD_ID = "20260606"
+APP_VERSION = "0.9.1-beta.2"
+BUILD_ID = "20260628"
 
 # Centralized Gemini Model configurations
 MODEL_FLASH_LITE = "gemini-2.5-flash-lite"

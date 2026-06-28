@@ -32,6 +32,7 @@ a = Analysis(
         (str(ROOT / 'config'), 'config'),
         (str(ROOT / 'pwa'), 'pwa'),
         (str(ROOT / 'assets'), 'assets'),
+        (str(ROOT / 'stitch_core_system_dashboard'), 'stitch_core_system_dashboard'),
         # openwakeword models (ONNX only)
         *OWW_DATAS,
     ],
@@ -187,7 +188,7 @@ a = Analysis(
         'sounddevice',
 
         # ── Test / Build tools ───────────────────────────────────────────
-        'pytest', 'unittest', 'doctest',
+        'pytest', 'doctest',
         'pip', 'setuptools', 'wheel',
         'Pythonwin', 'win32ui',
     ],

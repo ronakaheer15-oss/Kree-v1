@@ -1331,7 +1331,10 @@ class _DashboardAPI:
 
     def close_app(self):
         print("[KREE UI] JS requested close_app. Hibernating to tray.")
-        self._owner.hibernate()
+        if hasattr(self._owner, '_kree_instance'):
+            self._owner._kree_instance.hibernate()
+        else:
+            self._owner.hibernate()
         return "ok"
 
     def save_api_key(self, key: str):
@@ -2061,7 +2064,10 @@ class KreeUI:
 
             def _on_closing():
                 print("[KREE UI] Window close intercepted. Hibernating to tray instead.")
-                self.hibernate()
+                if hasattr(self, '_kree_instance'):
+                    self._kree_instance.hibernate()
+                else:
+                    self.hibernate()
                 return False
 
             self._main_win.events.closing += _on_closing

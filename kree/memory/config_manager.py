@@ -10,6 +10,8 @@ EMAIL_CONFIG_FILE = CONFIG_DIR / "email_settings.json"
 
 DEFAULT_AUDIO_SETTINGS = {
     "input_device_index": None,
+    "input_device_name": None,
+    "input_device_host_api": None,
     "vad_threshold_rising": 220,
     "vad_threshold_falling": 160,
     "partial_confidence_min": 0.7,

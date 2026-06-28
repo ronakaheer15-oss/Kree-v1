@@ -203,6 +203,22 @@ def _migrate_old_storage() -> None:
                         except Exception as e:
                             print(f"[Migration] ⚠️ Failed to copy {src_path}: {e}")
 
+    # 4. Strip hardware-specific device indices from migrated audio_settings.json
+    # Device indices are ephemeral and meaningless across different PCs.
+    # Fingerprint fields (input_device_name, input_device_host_api) are preserved
+    # so the wake word engine can resolve by name on the new machine.
+    migrated_audio = CONFIG_DIR / "audio_settings.json"
+    if migrated_audio.exists():
+        try:
+            import json
+            audio_data = json.loads(migrated_audio.read_text(encoding="utf-8"))
+            if isinstance(audio_data, dict) and audio_data.get("input_device_index") is not None:
+                audio_data["input_device_index"] = None
+                migrated_audio.write_text(json.dumps(audio_data, indent=2), encoding="utf-8")
+                print("[Migration] Stripped hardware-specific input_device_index from audio_settings.json")
+        except Exception as ae:
+            print(f"[Migration] ⚠️ Failed to sanitize audio_settings.json: {ae}")
+
 _migrate_old_storage()
 
 PLAYWRIGHT_BROWSERS_PATH = APP_DATA_DIR / "playwright_browsers"

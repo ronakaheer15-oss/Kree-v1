@@ -2692,8 +2692,10 @@ class JarvisLive:
             # Play short activation ding immediately
             try:
                 import winsound
-                winsound.PlaySound(str(ASSETS_DIR / "sounds" / "wake.wav"), winsound.SND_FILENAME | winsound.SND_ASYNC)
-            except Exception: pass
+                wav_path = str(ASSETS_DIR / "sounds" / "wake.wav")
+                winsound.PlaySound(wav_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+            except Exception as e:
+                print(f"[JARVIS] Failed to play wake sound at {wav_path}: {e}")
 
         if hasattr(self, 'wake_event'):
 
@@ -4938,12 +4940,7 @@ class JarvisLive:
                                     print("[JARVIS] PTT silence detected -- remuting mic")
 
                                     self._mic_ptt_active = False
-
                                     self._mic_ptt_silence_chunks = 0
-                                    
-                                    try:
-                                        self.ui.hibernate()
-                                    except Exception: pass
 
                             else:
 
@@ -6215,6 +6212,15 @@ class JarvisLive:
 
                 if not self.wake_event.is_set():
 
+                    if not getattr(self, "_boot_ding_played", False):
+                        self._boot_ding_played = True
+                        if hasattr(self, "_wakeword_detector") and self._wakeword_detector:
+                            print("[JARVIS] 🎤 Waiting for microphone to become ready...")
+                            # Wait asynchronously so we don't block the async loop
+                            mic_ready = await asyncio.to_thread(self._wakeword_detector.wait_for_mic, 30.0)
+                            if not mic_ready:
+                                print("[JARVIS] ⚠️ WakeWord mic NOT ready (degraded mode).")
+
                     print("[JARVIS] 💤 System sleeping. Awaiting Wake Word...")
 
                     await self.wake_event.wait()
@@ -6997,29 +7003,14 @@ def main():
 
             _bootlog("[BOOT] Phase 1: Starting wake word thread...")
             wakeword.start()
-            _bootlog("[BOOT] Phase 1: Wake word thread started OK")
+            _bootlog("[BOOT] Phase 1: Wake word thread started in background")
 
             kree._wakeword_detector = wakeword
-
-            _bootlog("[BOOT] Phase 1: WakeWord Daemon Armed")
 
         except Exception as e:
             import traceback
             _bootlog(f"[BOOT] Phase 1 FATAL: WakeWord boot failed: {e}")
             _bootlog(f"[BOOT] Traceback:\n{traceback.format_exc()}")
-
-        # ── Notify user: core services are ready ──
-        try:
-            import winsound
-            from kree.core.runtime import ASSETS_DIR
-            winsound.PlaySound(str(ASSETS_DIR / "sounds" / "wake.wav"), winsound.SND_FILENAME | winsound.SND_ASYNC)
-        except Exception:
-            pass
-
-        try:
-            pass
-        except Exception:
-            pass
 
         _bootlog("[BOOT] Phase 1 COMPLETE: Wake word + tray active")
 

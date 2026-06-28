@@ -229,6 +229,11 @@ class WakeWordDetector:
         self._model_name = None
         self._model_load_attempted = False
 
+        # ── Boot synchronization events ──
+        self.model_ready = threading.Event()
+        self.mic_ready = threading.Event()
+        self._boot_failed = False  # Set True on unrecoverable failure
+
         if self._voice_fp.is_available and not self._voice_fp.is_enrolled:
             print("[KREE VOICE] No voiceprint found. Say 'enroll my voice' to register.")
 
@@ -276,6 +281,7 @@ class WakeWordDetector:
                 )
                 self._model_name = next(iter(self.model.models.keys()), None)
                 _wlog(f"[WAKE] Model loaded successfully: {self._model_name}")
+                self.model_ready.set()
                 return True
             except Exception as e:
                 last_error = e
@@ -284,6 +290,7 @@ class WakeWordDetector:
                 self.model = None
 
         _wlog(f"[WAKE] ALL MODELS FAILED. Last error: {last_error}")
+        self.model_ready.set()  # Fail-safe: always release waiters
         return False
 
     def start(self):
@@ -295,6 +302,32 @@ class WakeWordDetector:
 
     def stop(self):
         self.is_running = False
+
+    def wait_for_mic(self, timeout: float = 30.0) -> bool:
+        """Block until the mic is confirmed open or timeout expires.
+
+        Returns True if mic is ready, False if boot failed or timed out.
+        Uses dynamic sub-timeouts: ~8s for model, remainder for mic scan.
+        """
+        MODEL_TIMEOUT = min(8.0, timeout * 0.4)
+        _wlog(f"[WAKE] wait_for_mic: waiting up to {MODEL_TIMEOUT:.0f}s for model...")
+        self.model_ready.wait(timeout=MODEL_TIMEOUT)
+
+        if self._boot_failed:
+            _wlog("[WAKE] wait_for_mic: boot failed during model load")
+            return False
+
+        remaining = max(timeout - MODEL_TIMEOUT, 2.0)
+        _wlog(f"[WAKE] wait_for_mic: model phase done, waiting up to {remaining:.0f}s for mic...")
+        self.mic_ready.wait(timeout=remaining)
+
+        if self._boot_failed:
+            _wlog("[WAKE] wait_for_mic: boot failed during mic acquisition")
+            return False
+
+        ready = self.mic_ready.is_set() and self.is_ready
+        _wlog(f"[WAKE] wait_for_mic: result={'READY' if ready else 'NOT READY'}")
+        return ready
 
     def enroll_owner_voice(self):
         """Public method to trigger voice enrollment."""
@@ -318,6 +351,24 @@ class WakeWordDetector:
         _wlog("[WAKE] _run_loop: Thread started")
         self.is_ready = False
 
+        try:
+            self._run_loop_inner(pyaudio)
+        except Exception as e:
+            _wlog(f"[WAKE] _run_loop unhandled error: {e}")
+            _wlog(f"[WAKE] Traceback: {_tb.format_exc()}")
+        finally:
+            # Fail-safe: ALWAYS release waiters to prevent deadlock
+            if not self.model_ready.is_set():
+                self._boot_failed = True
+                self.model_ready.set()
+            if not self.mic_ready.is_set():
+                self._boot_failed = True
+                self.mic_ready.set()
+            _wlog(f"[WAKE] _run_loop exited (boot_failed={self._boot_failed})")
+
+    def _run_loop_inner(self, pyaudio):
+        """Inner implementation of the detection loop, wrapped by _run_loop for fail-safe event release."""
+
         if not self._ensure_model():
             _wlog("[WAKE] ABORT: Model failed to load. Wake word thread exiting.")
             return
@@ -331,7 +382,7 @@ class WakeWordDetector:
         try:
 
 
-            from kree.memory.config_manager import load_audio_settings, AUDIO_CONFIG_FILE
+            from kree.memory.config_manager import load_audio_settings, save_audio_settings, AUDIO_CONFIG_FILE
             
             BUILD_VERSION = "KREE_BETA_BUILD_003"
             _wlog(f"[WAKE] BUILD_VERSION = \"{BUILD_VERSION}\"")
@@ -339,6 +390,50 @@ class WakeWordDetector:
             
             audio_settings = load_audio_settings()
             saved_idx = audio_settings.get("input_device_index")
+            saved_device_name = audio_settings.get("input_device_name")
+            saved_device_host_api = audio_settings.get("input_device_host_api")
+
+            # ── Validate saved device index: reject output-only or missing devices ──
+            if saved_idx is not None:
+                try:
+                    dev_info = pa.get_device_info_by_index(int(saved_idx))
+                    if int(dev_info.get("maxInputChannels", 0)) < 1:
+                        _wlog(f"[WAKE] Saved device {saved_idx} ({dev_info.get('name', '?')}) has no input channels — ignoring")
+                        saved_idx = None
+                except Exception:
+                    _wlog(f"[WAKE] Saved device index {saved_idx} not found on this system — ignoring")
+                    saved_idx = None
+
+            # ── Device fingerprint matching: resolve by name + host_api ──
+            fingerprint_idx = None
+            if saved_device_name and saved_idx is None:
+                _wlog(f"[WAKE] Attempting device fingerprint match: name='{saved_device_name}', host_api='{saved_device_host_api}'")
+                for i in range(pa.get_device_count()):
+                    try:
+                        di = pa.get_device_info_by_index(i)
+                        if int(di.get('maxInputChannels', 0)) < 1:
+                            continue
+                        di_name = di.get('name', '')
+                        di_host_api = None
+                        try:
+                            di_host_api = pa.get_host_api_info_by_index(int(di.get('hostApi', -1))).get('name')
+                        except Exception:
+                            pass
+                        # Exact name + host_api match
+                        if di_name == saved_device_name and (saved_device_host_api is None or di_host_api == saved_device_host_api):
+                            fingerprint_idx = i
+                            _wlog(f"[WAKE] Fingerprint exact match: device {i} '{di_name}' [{di_host_api}]")
+                            break
+                        # Fuzzy: name contains saved name (handles driver suffix changes)
+                        if saved_device_name.lower() in di_name.lower():
+                            fingerprint_idx = i
+                            _wlog(f"[WAKE] Fingerprint fuzzy match: device {i} '{di_name}' [{di_host_api}]")
+                            # Don't break — keep looking for exact match
+                    except Exception:
+                        pass
+                if fingerprint_idx is not None:
+                    saved_idx = fingerprint_idx
+                    _wlog(f"[WAKE] Fingerprint resolved to device index: {saved_idx}")
 
             try:
                 default_input = pa.get_default_input_device_info()
@@ -352,7 +447,7 @@ class WakeWordDetector:
             target_idx = saved_idx if saved_idx is not None else default_idx
             
             # Print logging enhancements requested by user
-            _wlog(f"[WAKE] saved_idx: {saved_idx}")
+            _wlog(f"[WAKE] saved_idx: {saved_idx} (fingerprint: name='{saved_device_name}', api='{saved_device_host_api}')")
             _wlog(f"[WAKE] default_idx: {default_idx} ({default_name})")
             _wlog(f"[WAKE] selected_idx: {target_idx}")
 
@@ -497,7 +592,6 @@ class WakeWordDetector:
                             except Exception:
                                 pass
             
-            # If no device had real varying audio, fall back to the first openable one
             if stream is None:
                 _wlog("[WAKE] WARNING: No device with real audio found. Falling back to default...")
                 for try_idx in devices_to_try:
@@ -518,13 +612,79 @@ class WakeWordDetector:
                     except Exception:
                         continue
             
+            # ── Warm retry for fresh PCs with slow driver init ──
             if stream is None:
-                _wlog("[WAKE] FATAL: Cannot open any audio device!")
+                MAX_RETRIES = 5
+                RETRY_DELAY = 2.0
+                _wlog(f"[WAKE] No audio device found. Retrying up to {MAX_RETRIES} times ({RETRY_DELAY}s interval)...")
+                _wlog("[WAKE] (Fresh PCs often have slow audio driver initialization)")
+                for retry in range(1, MAX_RETRIES + 1):
+                    if not self.is_running:
+                        _wlog("[WAKE] Retry aborted: detector stopped")
+                        break
+                    time.sleep(RETRY_DELAY)
+                    _wlog(f"[WAKE] Retry {retry}/{MAX_RETRIES}: re-scanning audio devices...")
+                    try:
+                        pa.terminate()
+                    except Exception:
+                        pass
+                    pa = pyaudio.PyAudio()
+                    for i in range(pa.get_device_count()):
+                        try:
+                            di = pa.get_device_info_by_index(i)
+                            if int(di.get('maxInputChannels', 0)) < 1:
+                                continue
+                            dev_name = di.get('name', '').lower()
+                            if 'stereo mix' in dev_name:
+                                continue
+                            stream = pa.open(
+                                rate=16000, channels=1, format=pyaudio.paInt16,
+                                input=True, input_device_index=i,
+                                frames_per_buffer=FRAMES_PER_BUFFER
+                            )
+                            native_rate = 16000
+                            native_channels = 1
+                            native_buffer = FRAMES_PER_BUFFER
+                            needs_resample = False
+                            target_name = di.get('name', 'unknown')
+                            target_idx = i
+                            _wlog(f"[WAKE] Retry {retry}: found device {i}: {target_name}")
+                            break
+                        except Exception:
+                            continue
+                    if stream is not None:
+                        break
+
+            if stream is None:
+                _wlog("[WAKE] FATAL: Cannot open any audio device after retries!")
+                _wlog("[WAKE] No microphone detected. Kree will enter degraded mode (text/UI still work).")
                 return
             
             self.selected_idx = target_idx
             print(f"[WAKE DEBUG] Final runtime device index: {self.selected_idx}")
             _wlog(f"[WAKE] Microphone stream opened (device={target_idx}, rate={native_rate}, channels={native_channels}, resample={needs_resample})")
+
+            # ── Save device fingerprint for cross-machine portability ──
+            try:
+                final_info = pa.get_device_info_by_index(int(target_idx))
+                final_name = final_info.get('name', '')
+                final_host_api_idx = final_info.get('hostApi')
+                final_host_api = None
+                if final_host_api_idx is not None:
+                    try:
+                        final_host_api = pa.get_host_api_info_by_index(int(final_host_api_idx)).get('name')
+                    except Exception:
+                        pass
+                save_audio_settings({
+                    "input_device_index": int(target_idx),
+                    "input_device_name": final_name,
+                    "input_device_host_api": final_host_api,
+                })
+                _wlog(f"[WAKE] Saved device fingerprint: name='{final_name}', host_api='{final_host_api}', idx={target_idx}")
+            except Exception as fp_err:
+                _wlog(f"[WAKE] Failed to save device fingerprint: {fp_err}")
+
+            _wlog(f"[WAKE] ✓ Mic acquired")
             _wlog(f"[WAKE] Listening for wake word...")
         except Exception as e:
             _wlog(f"[WAKE] FATAL: Audio device error: {e}")
@@ -579,6 +739,8 @@ class WakeWordDetector:
         frame_count = 0
 
         self.is_ready = True
+        self.mic_ready.set()  # Signal boot: mic is confirmed open and listening
+        _wlog("[WAKE] ✓ Listening armed")
         while self.is_running and threading.current_thread() == self._thread:
             try:
                 # ── Wakeword conflict mitigation ──

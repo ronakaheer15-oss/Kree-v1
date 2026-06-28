@@ -123,6 +123,32 @@ def _checksum_sha256(path: Path) -> str:
 
 def _normalize_manifest(raw: dict[str, Any]) -> dict[str, Any]:
     manifest = dict(raw or {})
+    
+    # ── GitHub Releases API Support ──
+    if "tag_name" in manifest and "assets" in manifest:
+        version = str(manifest.get("tag_name", "")).lstrip("v").strip()
+        notes = str(manifest.get("body", "")).strip()
+        published_at = str(manifest.get("published_at", "")).strip()
+        
+        # Find the zip asset for the download URL
+        download_url = ""
+        for asset in manifest.get("assets", []):
+            if str(asset.get("name", "")).endswith(".zip"):
+                download_url = str(asset.get("browser_download_url", "")).strip()
+                break
+                
+        return {
+            "name": str(manifest.get("name") or APP_NAME),
+            "version": version,
+            "download_url": download_url,
+            "package_type": "zip",
+            "checksum": "",  # GitHub releases don't typically embed a checksum in the main payload body
+            "notes": notes,
+            "published_at": published_at,
+            "manifest_url": str(manifest.get("manifest_url") or "").strip(),
+        }
+    
+    # ── Legacy Custom Manifest Support ──
     version = str(manifest.get("version") or manifest.get("latest_version") or "").strip()
     download_url = str(manifest.get("download_url") or manifest.get("package_url") or "").strip()
     package_type = str(manifest.get("package_type") or "zip").strip().lower() or "zip"
@@ -170,7 +196,12 @@ def _resolve_manifest_url(manifest_url: str | None = None) -> str:
     configured = str(settings.get("manifest_url") or "").strip()
     if configured:
         return configured
-    return os.environ.get("KREE_UPDATE_MANIFEST_URL", "").strip()
+    env_url = os.environ.get("KREE_UPDATE_MANIFEST_URL", "").strip()
+    if env_url:
+        return env_url
+        
+    # Default to the official Kree AI GitHub repository
+    return "https://api.github.com/repos/ronakaheer15-oss/Kree-v1/releases/latest"
 
 
 def get_update_state() -> dict[str, Any]:
